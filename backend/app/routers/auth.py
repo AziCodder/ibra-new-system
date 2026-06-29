@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.requests import Request
 from itsdangerous import BadSignature, URLSafeTimedSerializer
@@ -7,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_session
 from app.core.security import verify_password
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.auth import LoginRequest, UserResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -45,6 +47,15 @@ async def get_current_user(request: Request, session: AsyncSession = Depends(get
         raise HTTPException(status_code=401, detail="User not found or deactivated")
 
     return user
+
+
+def require_role(*roles: UserRole) -> Callable:
+    async def dependency(user: User = Depends(get_current_user)) -> User:
+        if user.role not in roles:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return user
+
+    return Depends(dependency)
 
 
 @router.post("/login", response_model=UserResponse)
