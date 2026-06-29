@@ -1,7 +1,7 @@
 # Progress — Ibra Order System
 
 ## Текущая фаза: 0
-## Текущая задача: 0.8 — Линтеры и форматтеры
+## Текущая задача: 0.9 — Docker-compose dev-окружение
 
 ## Выполненные задачи
 
@@ -14,6 +14,7 @@
 | 0.5 | SQLAlchemy + Alembic (async engine, Base, sync psycopg миграции, port 5433) | 2026-06-29 20:11 | ✅ |
 | 0.6 | Скелет фронтенда (Vite+React+TS+Tailwind+Router+Query, dark/light токены, health check) | 2026-06-29 20:19 | ✅ |
 | 0.7 | CORS и dev-прокси (FastAPI CORSMiddleware + Vite proxy) | 2026-06-29 20:24 | ✅ |
+| 0.8 | Линтеры (ruff backend, eslint+typescript-eslint frontend, оба чистые) | 2026-06-29 20:30 | ✅ |
 
 ## Блокеры / заметки
 - Docker DB на порту 5433 (не 5432 — конфликт с локальным Postgres)
