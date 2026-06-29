@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Build
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Uploads
+uploads/
+
+# Alembic
+backend/alembic/versions/__pycache__/
+
+# Test
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Prototype (not part of main app)
+prototype/
+
+# Remotion test (separate experiment)
+remotion-test/
+
+# Chat exports
+ChatExport_*/
+
+# Graphify output
+graphify-out/
