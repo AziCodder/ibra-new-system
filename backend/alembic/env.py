@@ -5,6 +5,7 @@ from sqlalchemy import create_engine
 
 from app.core.config import settings
 from app.core.database import Base
+import app.models  # noqa: F401 — register all models for autogenerate
 
 config = context.config
 if config.config_file_name is not None:
