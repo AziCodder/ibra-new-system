@@ -10,6 +10,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-ibra_orders}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   pgdata:
