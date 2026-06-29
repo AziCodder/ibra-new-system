@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
 import RequireAuth from './components/RequireAuth'
 import LoginPage from './pages/LoginPage'
+import UsersPage from './pages/UsersPage'
 
 const queryClient = new QueryClient()
 
@@ -48,6 +49,14 @@ function App() {
               element={
                 <RequireAuth>
                   <Dashboard />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/users"
+              element={
+                <RequireAuth>
+                  <UsersPage />
                 </RequireAuth>
               }
             />

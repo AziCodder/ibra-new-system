@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.routers.auth import router as auth_router
+from app.routers.users import router as users_router
 
 app = FastAPI(
     title="Ibra Order System",
@@ -20,6 +21,7 @@ app.add_middleware(
 
 
 app.include_router(auth_router)
+app.include_router(users_router)
 
 
 @app.get("/health")
