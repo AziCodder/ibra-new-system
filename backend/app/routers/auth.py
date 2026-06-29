@@ -30,6 +30,23 @@ def _read_session_token(token: str) -> int | None:
         return None
 
 
+async def get_current_user(request: Request, session: AsyncSession = Depends(get_session)) -> User:
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = _read_session_token(token)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
+
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found or deactivated")
+
+    return user
+
+
 @router.post("/login", response_model=UserResponse)
 async def login(body: LoginRequest, response: Response, session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(User).where(User.login == body.login))
@@ -59,18 +76,6 @@ async def logout(response: Response):
     return {"ok": True}
 
 
-async def get_current_user(request: Request, session: AsyncSession = Depends(get_session)) -> User:
-    token = request.cookies.get(SESSION_COOKIE)
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    user_id = _read_session_token(token)
-    if user_id is None:
-        raise HTTPException(status_code=401, detail="Invalid or expired session")
-
-    result = await session.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="User not found or deactivated")
-
+@router.get("/me", response_model=UserResponse)
+async def me(user: User = Depends(get_current_user)):
     return user
