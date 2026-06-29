@@ -1,7 +1,7 @@
 # Progress — Ibra Order System
 
 ## Текущая фаза: 0
-## Текущая задача: 0.5 — Подключение SQLAlchemy + Alembic
+## Текущая задача: 0.6 — Скелет фронтенда
 
 ## Выполненные задачи
 
@@ -11,10 +11,11 @@
 | 0.2 | PostgreSQL в Docker (healthcheck, pg_isready + psql подключение проверено) | 2026-06-29 19:51 | ✅ |
 | 0.3 | Скелет FastAPI (main.py, /health, /docs, requirements.txt) | 2026-06-29 19:57 | ✅ |
 | 0.4 | Конфиг через pydantic-settings (Settings из .env, проверено) | 2026-06-29 20:03 | ✅ |
+| 0.5 | SQLAlchemy + Alembic (async engine, Base, sync psycopg миграции, port 5433) | 2026-06-29 20:11 | ✅ |
 
 ## Блокеры / заметки
 - git init выполнен, ветка auto/ibra-dev создана
-- Docker DB контейнер работает: ibranewsystem-db-1
+- Docker DB на порту 5433 (не 5432 — конфликт с локальным Postgres)
 - pip install требует --trusted-host из-за SSL на этой машине
 - Python 3.11 путь: C:/Users/Абдул-Азиз/AppData/Local/Programs/Python/Python311/python.exe
-- backend/.env создан (не в git)
+- Alembic использует psycopg (sync) для миграций, runtime — asyncpg
