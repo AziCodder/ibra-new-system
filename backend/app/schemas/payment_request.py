@@ -49,6 +49,8 @@ class PaymentRequestOut(BaseModel):
     file_keys: list[str]
     currency: str
     total_amount: Decimal
+    paid_amount: Decimal
+    remaining_amount: Decimal
     items: list[PaymentRequestItemOut]
     created_at: datetime
 

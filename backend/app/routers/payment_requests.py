@@ -16,6 +16,7 @@ from app.schemas.payment_request import (
     PaymentRequestOut,
     PaymentRequestUpdate,
 )
+from app.services.payment_remaining import get_payment_request_paid
 from app.services.payment_request_dependencies import count_payment_request_dependencies
 from app.services.payment_request_validation import PaymentRequestValidationError, validate_payment_request_items
 
@@ -63,6 +64,7 @@ async def _to_payment_request_out(request: PaymentRequest, session: AsyncSession
     ]
     currency = rows[0][2] if rows else ""
     total_amount = sum((item.amount for item in items), start=Decimal("0"))
+    paid_amount = await get_payment_request_paid(session, request.id)
 
     return PaymentRequestOut(
         id=request.id,
@@ -75,6 +77,8 @@ async def _to_payment_request_out(request: PaymentRequest, session: AsyncSession
         file_keys=request.file_keys,
         currency=currency,
         total_amount=total_amount,
+        paid_amount=paid_amount,
+        remaining_amount=total_amount - paid_amount,
         items=items,
         created_at=request.created_at,
     )
