@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchOrder, type OrderStatus } from '../api/orders'
@@ -8,10 +9,31 @@ const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: stri
   cancelled: { label: 'Отменён', bg: 'var(--color-danger-bg)', color: 'var(--color-danger)' },
 }
 
+type TabKey = 'items' | 'payments' | 'logistics' | 'finance'
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'items', label: 'Товары' },
+  { key: 'payments', label: 'Запросы на оплату' },
+  { key: 'logistics', label: 'Логистика' },
+  { key: 'finance', label: 'ДиР' },
+]
+
+function EmptyTabState({ label }: { label: string }) {
+  return (
+    <div
+      className="rounded-2xl p-12 text-center"
+      style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
+    >
+      Раздел «{label}» в разработке
+    </div>
+  )
+}
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const orderId = Number(id)
+  const [activeTab, setActiveTab] = useState<TabKey>('items')
 
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', orderId],
@@ -65,12 +87,34 @@ export default function OrderDetailPage() {
 
       {order.details && (
         <div
-          className="rounded-xl p-4 text-sm"
+          className="rounded-xl p-4 text-sm mb-6"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
         >
           {order.details}
         </div>
       )}
+
+      <div className="flex gap-1 overflow-x-auto mb-5" style={{ borderBottom: '1px solid var(--color-border)' }}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className="px-4 py-3 text-sm font-medium cursor-pointer whitespace-nowrap transition-colors"
+            style={{
+              color: activeTab === tab.key ? 'var(--color-primary)' : 'var(--color-muted)',
+              borderBottom: activeTab === tab.key ? '2px solid var(--color-primary)' : '2px solid transparent',
+              marginBottom: -1,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'items' && <EmptyTabState label="Товары" />}
+      {activeTab === 'payments' && <EmptyTabState label="Запросы на оплату" />}
+      {activeTab === 'logistics' && <EmptyTabState label="Логистика" />}
+      {activeTab === 'finance' && <EmptyTabState label="ДиР" />}
     </div>
   )
 }
