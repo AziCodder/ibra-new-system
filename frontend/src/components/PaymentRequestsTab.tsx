@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchPaymentRequests, type PaymentRequestPriority } from '../api/paymentRequests'
 import CreatePaymentRequestModal from './CreatePaymentRequestModal'
+import PaymentRequestDetailPanel from './PaymentRequestDetailPanel'
 
 const PRIORITY_BADGE: Record<PaymentRequestPriority, { label: string; bg: string; color: string }> = {
   low: { label: 'Низкий', bg: 'var(--color-surface-3)', color: 'var(--color-muted)' },
@@ -15,11 +16,14 @@ function formatNumber(value: number): string {
 
 export default function PaymentRequestsTab({ orderId, canEdit }: { orderId: number; canEdit: boolean }) {
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null)
 
   const { data: requests, isLoading } = useQuery({
     queryKey: ['payment-requests', orderId],
     queryFn: () => fetchPaymentRequests(orderId),
   })
+
+  const selectedRequest = requests?.find((r) => r.id === selectedRequestId) ?? null
 
   return (
     <div>
@@ -56,7 +60,8 @@ export default function PaymentRequestsTab({ orderId, canEdit }: { orderId: numb
             return (
               <div
                 key={request.id}
-                className="rounded-2xl p-4"
+                onClick={() => setSelectedRequestId(request.id)}
+                className="rounded-2xl p-4 cursor-pointer"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
               >
                 <div className="flex items-center justify-between mb-3">
@@ -104,6 +109,15 @@ export default function PaymentRequestsTab({ orderId, canEdit }: { orderId: numb
       )}
 
       {showCreateModal && <CreatePaymentRequestModal orderId={orderId} onClose={() => setShowCreateModal(false)} />}
+
+      {selectedRequest && (
+        <PaymentRequestDetailPanel
+          orderId={orderId}
+          request={selectedRequest}
+          canEdit={canEdit}
+          onClose={() => setSelectedRequestId(null)}
+        />
+      )}
     </div>
   )
 }

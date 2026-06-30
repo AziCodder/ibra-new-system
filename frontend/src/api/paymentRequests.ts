@@ -56,3 +56,14 @@ export async function createPaymentRequest(orderId: number, data: PaymentRequest
   }
   return res.json()
 }
+
+export async function deletePaymentRequest(orderId: number, requestId: number): Promise<void> {
+  const res = await fetch(`/api/orders/${orderId}/payment-requests/${requestId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to delete payment request')
+  }
+}
