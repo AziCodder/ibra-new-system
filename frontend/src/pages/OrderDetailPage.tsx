@@ -8,6 +8,7 @@ import PaymentRequestsTab from '../components/PaymentRequestsTab'
 import LogisticsTab from '../components/LogisticsTab'
 import LedgerTab from '../components/LedgerTab'
 import { useAuth } from '../contexts/AuthContext'
+import ProfitBlock from '../components/ProfitBlock'
 
 const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: string }> = {
   in_progress: { label: 'В работе', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
@@ -90,6 +91,8 @@ export default function OrderDetailPage() {
           {order.details}
         </div>
       )}
+
+      <ProfitBlock orderId={orderId} />
 
       <div className="flex gap-1 overflow-x-auto mb-5" style={{ borderBottom: '1px solid var(--color-border)' }}>
         {TABS.map((tab) => (
