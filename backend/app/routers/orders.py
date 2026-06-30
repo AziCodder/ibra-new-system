@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_session
 from app.models.client import Client
 from app.models.order import Order, OrderStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
 from app.schemas.order import OrderCreate, OrderListOut, OrderOut
 from app.services.order_number import generate_order_number
@@ -45,9 +45,13 @@ async def list_orders(
     manager_id: int | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    # Managers only ever see their own orders, regardless of requested manager_id
+    if user.role == UserRole.manager:
+        manager_id = user.id
+
     filters = []
     if client_id is not None:
         filters.append(Order.client_id == client_id)
@@ -72,11 +76,13 @@ async def list_orders(
 @router.get("/{order_id}", response_model=OrderOut)
 async def get_order(
     order_id: int,
-    _user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     result = await session.execute(select(Order).where(Order.id == order_id))
     order = result.scalar_one_or_none()
     if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if user.role == UserRole.manager and order.manager_id != user.id:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
