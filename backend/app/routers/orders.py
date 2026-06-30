@@ -6,8 +6,9 @@ from app.core.database import get_session
 from app.models.client import Client
 from app.models.order import Order, OrderStatus
 from app.models.user import User, UserRole
-from app.routers.auth import get_current_user
-from app.schemas.order import OrderCreate, OrderListOut, OrderOut
+from app.routers.auth import get_current_user, require_role
+from app.schemas.order import OrderCreate, OrderListOut, OrderOut, OrderUpdate
+from app.services.order_dependencies import count_order_dependencies
 from app.services.order_number import generate_order_number
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -114,3 +115,49 @@ async def get_order(
     if user.role == UserRole.manager and order.manager_id != user.id:
         raise HTTPException(status_code=404, detail="Order not found")
     return _to_order_out(order, client_name, manager_name)
+
+
+@router.patch("/{order_id}", response_model=OrderOut)
+async def update_order(
+    order_id: int,
+    body: OrderUpdate,
+    _admin: User = require_role(UserRole.admin),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(Order, Client.full_name, User.full_name)
+        .join(Client, Order.client_id == Client.id)
+        .join(User, Order.manager_id == User.id)
+        .where(Order.id == order_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order, client_name, manager_name = row
+
+    order.details = body.details
+    await session.commit()
+    await session.refresh(order)
+    return _to_order_out(order, client_name, manager_name)
+
+
+@router.delete("/{order_id}", status_code=204)
+async def delete_order(
+    order_id: int,
+    _admin: User = require_role(UserRole.admin),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(Order).where(Order.id == order_id))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    dependency_count = await count_order_dependencies(session, order_id)
+    if dependency_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Order has {dependency_count} related record(s) and cannot be deleted",
+        )
+
+    await session.delete(order)
+    await session.commit()

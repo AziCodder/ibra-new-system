@@ -11,6 +11,10 @@ class OrderCreate(BaseModel):
     details: str = ""
 
 
+class OrderUpdate(BaseModel):
+    details: str
+
+
 class OrderOut(BaseModel):
     id: int
     number: str
