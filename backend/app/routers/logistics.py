@@ -4,11 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.models.logistics import Logistics, LogisticsStatus
+from app.models.logistics_comment import LogisticsComment
 from app.models.order import Order
 from app.models.product import Product
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
 from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsOut, LogisticsUpdate
+from app.schemas.logistics_comment import LogisticsCommentCreate, LogisticsCommentOut
 from app.services.logistics_validation import LogisticsValidationError, validate_logistics_quantity
 
 router = APIRouter(prefix="/api/orders/{order_id}/logistics", tags=["logistics"])
@@ -256,3 +258,58 @@ async def unaccept_logistics(
     await session.commit()
     await session.refresh(logistics)
     return await _to_logistics_out(logistics, session)
+
+
+@router.get("/{logistics_id}/comments", response_model=list[LogisticsCommentOut])
+async def list_logistics_comments(
+    order_id: int,
+    logistics_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _get_order_for_read(order_id, user, session)
+    await _get_logistics_or_404(order_id, logistics_id, session)
+
+    result = await session.execute(
+        select(LogisticsComment, User.full_name)
+        .join(User, LogisticsComment.author_id == User.id)
+        .where(LogisticsComment.logistics_id == logistics_id)
+        .order_by(LogisticsComment.created_at)
+    )
+    return [
+        LogisticsCommentOut(
+            id=comment.id,
+            logistics_id=comment.logistics_id,
+            author_id=comment.author_id,
+            author_name=author_name,
+            text=comment.text,
+            created_at=comment.created_at,
+        )
+        for comment, author_name in result.all()
+    ]
+
+
+@router.post("/{logistics_id}/comments", response_model=LogisticsCommentOut, status_code=201)
+async def create_logistics_comment(
+    order_id: int,
+    logistics_id: int,
+    body: LogisticsCommentCreate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Comments are addable by every role on any status — observer included, per ТЗ §9."""
+    await _get_order_for_read(order_id, user, session)
+    await _get_logistics_or_404(order_id, logistics_id, session)
+
+    comment = LogisticsComment(logistics_id=logistics_id, author_id=user.id, text=body.text)
+    session.add(comment)
+    await session.commit()
+    await session.refresh(comment)
+    return LogisticsCommentOut(
+        id=comment.id,
+        logistics_id=comment.logistics_id,
+        author_id=comment.author_id,
+        author_name=user.full_name,
+        text=comment.text,
+        created_at=comment.created_at,
+    )
