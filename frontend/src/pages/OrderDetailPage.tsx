@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { fetchOrder, type OrderStatus } from '../api/orders'
+import NotesSection from '../components/NotesSection'
 
 const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: string }> = {
   in_progress: { label: 'В работе', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
@@ -115,6 +116,8 @@ export default function OrderDetailPage() {
       {activeTab === 'payments' && <EmptyTabState label="Запросы на оплату" />}
       {activeTab === 'logistics' && <EmptyTabState label="Логистика" />}
       {activeTab === 'finance' && <EmptyTabState label="ДиР" />}
+
+      <NotesSection orderId={order.id} />
     </div>
   )
 }

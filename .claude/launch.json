@@ -7,6 +7,13 @@
       "runtimeArgs": ["run", "dev", "--", "--host", "127.0.0.1"],
       "cwd": "frontend",
       "port": 5173
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "C:/Users/Абдул-Азиз/AppData/Local/Programs/Python/Python311/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "backend",
+      "port": 8000
     }
   ]
 }
