@@ -1,3 +1,5 @@
+import mimetypes
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from fastapi.responses import Response
 
@@ -35,10 +37,15 @@ async def download_file(
     except StorageError:
         raise HTTPException(status_code=404, detail="File not found") from None
 
+    media_type, _ = mimetypes.guess_type(file_key)
+    media_type = media_type or "application/octet-stream"
+    # Images render inline (e.g. product photo previews); other files force a download.
+    disposition = "inline" if media_type.startswith("image/") else "attachment"
+
     return Response(
         content=data,
-        media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{file_key}"'},
+        media_type=media_type,
+        headers={"Content-Disposition": f'{disposition}; filename="{file_key}"'},
     )
 
 

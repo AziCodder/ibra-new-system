@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchProducts } from '../api/products'
 import AddProductModal from './AddProductModal'
+import ProductDetailPanel from './ProductDetailPanel'
 
 function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
@@ -9,11 +10,14 @@ function formatNumber(value: number): string {
 
 export default function ProductsTable({ orderId, canEdit }: { orderId: number; canEdit: boolean }) {
   const [showAddModal, setShowAddModal] = useState(false)
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
 
   const { data: products, isLoading } = useQuery({
     queryKey: ['products', orderId],
     queryFn: () => fetchProducts(orderId),
   })
+
+  const selectedProduct = products?.find((p) => p.id === selectedProductId) ?? null
 
   const totalsByCurrency = new Map<string, { quantity: number; sum: number }>()
   for (const product of products ?? []) {
@@ -75,7 +79,14 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
                 const quantity = Number(product.quantity)
                 const price = Number(product.price)
                 return (
-                  <tr key={product.id} style={{ borderTop: '1px solid var(--color-border)' }}>
+                  <tr
+                    key={product.id}
+                    onClick={() => setSelectedProductId(product.id)}
+                    className="cursor-pointer transition-colors"
+                    style={{ borderTop: '1px solid var(--color-border)' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                  >
                     <td className="px-4 py-2.5" style={{ color: 'var(--color-text)' }}>
                       {product.name}
                     </td>
@@ -113,6 +124,16 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
       )}
 
       {showAddModal && <AddProductModal orderId={orderId} onClose={() => setShowAddModal(false)} />}
+
+      {selectedProduct && (
+        <ProductDetailPanel
+          key={selectedProduct.id}
+          orderId={orderId}
+          product={selectedProduct}
+          canEdit={canEdit}
+          onClose={() => setSelectedProductId(null)}
+        />
+      )}
     </div>
   )
 }

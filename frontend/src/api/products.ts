@@ -41,3 +41,30 @@ export async function createProduct(orderId: number, data: ProductCreate): Promi
   }
   return res.json()
 }
+
+export type ProductUpdate = Partial<ProductCreate>
+
+export async function updateProduct(orderId: number, productId: number, data: ProductUpdate): Promise<Product> {
+  const res = await fetch(`/api/orders/${orderId}/products/${productId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to update product')
+  }
+  return res.json()
+}
+
+export async function deleteProduct(orderId: number, productId: number): Promise<void> {
+  const res = await fetch(`/api/orders/${orderId}/products/${productId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to delete product')
+  }
+}
