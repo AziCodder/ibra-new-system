@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchOrder, type OrderStatus } from '../api/orders'
 import NotesSection from '../components/NotesSection'
 import ProductsTable from '../components/ProductsTable'
+import PaymentRequestsTab from '../components/PaymentRequestsTab'
 import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: string }> = {
@@ -62,7 +63,7 @@ export default function OrderDetailPage() {
 
   const badge = STATUS_BADGE[order.status]
   const date = new Date(order.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })
-  const canEditProducts = !!user && (user.role === 'admin' || (user.role === 'manager' && user.id === order.manager_id))
+  const canEdit = !!user && (user.role === 'admin' || (user.role === 'manager' && user.id === order.manager_id))
 
   return (
     <div className="p-6">
@@ -116,8 +117,8 @@ export default function OrderDetailPage() {
         ))}
       </div>
 
-      {activeTab === 'items' && <ProductsTable orderId={order.id} canEdit={canEditProducts} />}
-      {activeTab === 'payments' && <EmptyTabState label="Запросы на оплату" />}
+      {activeTab === 'items' && <ProductsTable orderId={order.id} canEdit={canEdit} />}
+      {activeTab === 'payments' && <PaymentRequestsTab orderId={order.id} canEdit={canEdit} />}
       {activeTab === 'logistics' && <EmptyTabState label="Логистика" />}
       {activeTab === 'finance' && <EmptyTabState label="ДиР" />}
 

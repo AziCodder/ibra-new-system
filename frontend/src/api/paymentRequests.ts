@@ -1,0 +1,58 @@
+export type PaymentRequestPriority = 'low' | 'normal' | 'urgent'
+
+export interface PaymentRequestItem {
+  id: number
+  product_id: number
+  product_name: string
+  amount: string
+}
+
+export interface PaymentRequest {
+  id: number
+  order_id: number
+  created_by_id: number
+  created_by_name: string
+  requisites: string
+  details: string
+  priority: PaymentRequestPriority
+  file_keys: string[]
+  currency: string
+  total_amount: string
+  paid_amount: string
+  remaining_amount: string
+  items: PaymentRequestItem[]
+  created_at: string
+}
+
+export interface PaymentRequestItemIn {
+  product_id: number
+  amount: number
+}
+
+export interface PaymentRequestCreate {
+  requisites?: string
+  details?: string
+  priority?: PaymentRequestPriority
+  file_keys?: string[]
+  items: PaymentRequestItemIn[]
+}
+
+export async function fetchPaymentRequests(orderId: number): Promise<PaymentRequest[]> {
+  const res = await fetch(`/api/orders/${orderId}/payment-requests/`, { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch payment requests')
+  return res.json()
+}
+
+export async function createPaymentRequest(orderId: number, data: PaymentRequestCreate): Promise<PaymentRequest> {
+  const res = await fetch(`/api/orders/${orderId}/payment-requests/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to create payment request')
+  }
+  return res.json()
+}
