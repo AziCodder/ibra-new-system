@@ -41,6 +41,12 @@ export async function fetchOrders(filters: OrderFilters = {}): Promise<OrderList
   return res.json()
 }
 
+export async function fetchOrder(id: number): Promise<Order> {
+  const res = await fetch(`/api/orders/${id}`, { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch order')
+  return res.json()
+}
+
 export async function createOrder(data: { client_id: number; currency?: string; details?: string }): Promise<Order> {
   const res = await fetch('/api/orders/', {
     method: 'POST',

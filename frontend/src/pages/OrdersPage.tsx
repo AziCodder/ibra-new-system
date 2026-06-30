@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { fetchOrders, type OrderStatus } from '../api/orders'
 import { fetchClients } from '../api/clients'
+import CreateOrderModal from '../components/CreateOrderModal'
 
 const STATUS_CHIPS: { key: OrderStatus | 'all'; label: string }[] = [
   { key: 'in_progress', label: 'В работе' },
@@ -16,12 +18,14 @@ const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: stri
 }
 
 function OrderCard({ order }: { order: import('../api/orders').Order }) {
+  const navigate = useNavigate()
   const badge = STATUS_BADGE[order.status]
   const date = new Date(order.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
 
   return (
     <div
-      className="rounded-2xl p-4 flex flex-col gap-3 transition-transform"
+      onClick={() => navigate(`/orders/${order.id}`)}
+      className="rounded-2xl p-4 flex flex-col gap-3 transition-transform cursor-pointer"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
     >
       <div className="flex items-center justify-between">
@@ -55,6 +59,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
   const [clientId, setClientId] = useState<number | undefined>(undefined)
   const [page, setPage] = useState(1)
+  const [showCreate, setShowCreate] = useState(false)
   const pageSize = 12
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
@@ -81,7 +86,16 @@ export default function OrdersPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>Заказы</h2>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer"
+          style={{ background: 'var(--color-primary)', color: '#fff' }}
+        >
+          + Создать заказ
+        </button>
       </div>
+
+      {showCreate && <CreateOrderModal onClose={() => setShowCreate(false)} />}
 
       <div className="flex items-center gap-3 mb-5 flex-wrap">
         <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--color-surface-2)' }}>

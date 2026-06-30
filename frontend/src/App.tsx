@@ -6,6 +6,7 @@ import RequireAuth from './components/RequireAuth'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
 import OrdersPage from './pages/OrdersPage'
+import OrderDetailPage from './pages/OrderDetailPage'
 import DatabasePage from './pages/DatabasePage'
 
 const queryClient = new QueryClient()
@@ -28,6 +29,16 @@ function App() {
                 <RequireAuth>
                   <Layout>
                     <OrdersPage />
+                  </Layout>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/orders/:id"
+              element={
+                <RequireAuth>
+                  <Layout>
+                    <OrderDetailPage />
                   </Layout>
                 </RequireAuth>
               }
