@@ -67,3 +67,25 @@ export async function deletePaymentRequest(orderId: number, requestId: number): 
     throw new Error(err.detail || 'Failed to delete payment request')
   }
 }
+
+export interface PaymentRequestSummary extends PaymentRequest {
+  order_number: string
+  client_name: string
+  manager_name: string
+  manager_id: number
+  order_currency: string
+}
+
+export async function fetchAllPaymentRequests(params?: {
+  manager_id?: number
+  client_id?: number
+  sort?: 'asc' | 'desc'
+}): Promise<PaymentRequestSummary[]> {
+  const url = new URL('/api/payment-requests/', window.location.origin)
+  if (params?.manager_id) url.searchParams.set('manager_id', String(params.manager_id))
+  if (params?.client_id) url.searchParams.set('client_id', String(params.client_id))
+  if (params?.sort) url.searchParams.set('sort', params.sort)
+  const res = await fetch(url.toString(), { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch payment requests')
+  return res.json()
+}

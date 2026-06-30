@@ -10,6 +10,7 @@ from app.routers.logistics import router as logistics_router
 from app.routers.notes import router as notes_router
 from app.routers.orders import router as orders_router
 from app.routers.payment_requests import router as payment_requests_router
+from app.routers.payment_requests_global import router as payment_requests_global_router
 from app.routers.payments import router as payments_router
 from app.routers.products import router as products_router
 from app.routers.profit import router as profit_router
@@ -39,6 +40,7 @@ app.include_router(logistics_router)
 app.include_router(notes_router)
 app.include_router(orders_router)
 app.include_router(payment_requests_router)
+app.include_router(payment_requests_global_router)
 app.include_router(payments_router)
 app.include_router(products_router)
 app.include_router(profit_router)

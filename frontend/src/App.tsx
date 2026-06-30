@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage'
 import OrdersPage from './pages/OrdersPage'
 import OrderDetailPage from './pages/OrderDetailPage'
 import DatabasePage from './pages/DatabasePage'
+import PaymentRequestsPage from './pages/PaymentRequestsPage'
 
 const queryClient = new QueryClient()
 
@@ -49,6 +50,16 @@ function App() {
                 <RequireAuth>
                   <Layout>
                     <DatabasePage />
+                  </Layout>
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/payment-requests"
+              element={
+                <RequireAuth>
+                  <Layout>
+                    <PaymentRequestsPage />
                   </Layout>
                 </RequireAuth>
               }

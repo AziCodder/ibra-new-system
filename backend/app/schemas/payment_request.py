@@ -55,3 +55,11 @@ class PaymentRequestOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PaymentRequestSummaryOut(PaymentRequestOut):
+    order_number: str
+    client_name: str
+    manager_name: str
+    manager_id: int
+    order_currency: str

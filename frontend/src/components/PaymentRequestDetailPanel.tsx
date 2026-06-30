@@ -31,12 +31,14 @@ export default function PaymentRequestDetailPanel({
   canEdit,
   orderCurrency,
   onClose,
+  onMutate,
 }: {
   orderId: number
   request: PaymentRequest
   canEdit: boolean
   orderCurrency: string
   onClose: () => void
+  onMutate?: () => void
 }) {
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
@@ -65,6 +67,7 @@ export default function PaymentRequestDetailPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payment-requests', orderId] })
       queryClient.invalidateQueries({ queryKey: ['payments', orderId, request.id] })
+      onMutate?.()
       setAmount('')
       setExchangeRate('1')
       setNote('')
@@ -77,6 +80,7 @@ export default function PaymentRequestDetailPanel({
     mutationFn: () => deletePaymentRequest(orderId, request.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payment-requests', orderId] })
+      onMutate?.()
       onClose()
     },
     onError: (err: Error) => setError(err.message),
