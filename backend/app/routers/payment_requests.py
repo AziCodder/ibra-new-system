@@ -5,6 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.models.client import Client
 from app.models.order import Order
 from app.models.payment_request import PaymentRequest, PaymentRequestItem
 from app.models.product import Product
@@ -16,6 +17,7 @@ from app.schemas.payment_request import (
     PaymentRequestOut,
     PaymentRequestUpdate,
 )
+from app.services.notifications import notify
 from app.services.payment_remaining import get_payment_request_paid
 from app.services.payment_request_dependencies import count_payment_request_dependencies
 from app.services.payment_request_validation import PaymentRequestValidationError, validate_payment_request_items
@@ -123,7 +125,7 @@ async def create_payment_request(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    await _get_order_for_write(order_id, user, session)
+    order = await _get_order_for_write(order_id, user, session)
 
     product_ids = [item.product_id for item in body.items]
     await _validate_items_belong_to_order(order_id, product_ids, session)
@@ -149,7 +151,17 @@ async def create_payment_request(
 
     await session.commit()
     await session.refresh(request)
-    return await _to_payment_request_out(request, session)
+    out = await _to_payment_request_out(request, session)
+
+    client = (await session.execute(select(Client).where(Client.id == order.client_id))).scalar_one()
+    notify(
+        client.telegram_group_link,
+        f"По заказу {order.number} выставлен запрос на оплату на сумму {out.total_amount} {out.currency}. "
+        f"Детали: {request.details or '—'}. Реквизиты: {request.requisites or '—'}. "
+        f"Ссылка на заказ: /orders/{order.id}",
+    )
+
+    return out
 
 
 @router.patch("/{request_id}", response_model=PaymentRequestOut)
