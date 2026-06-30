@@ -1,7 +1,7 @@
 # Progress — Ibra Order System
 
-## Текущая фаза: 0
-## Текущая задача: 0.9 — Docker-compose dev-окружение
+## Текущая фаза: 4
+## Текущая задача: 4.7 — Фронт: создание заказа
 
 ## Выполненные задачи
 
@@ -15,9 +15,36 @@
 | 0.6 | Скелет фронтенда (Vite+React+TS+Tailwind+Router+Query, dark/light токены, health check) | 2026-06-29 20:19 | ✅ |
 | 0.7 | CORS и dev-прокси (FastAPI CORSMiddleware + Vite proxy) | 2026-06-29 20:24 | ✅ |
 | 0.8 | Линтеры (ruff backend, eslint+typescript-eslint frontend, оба чистые) | 2026-06-29 20:30 | ✅ |
+| 0.9 | Docker-compose dev-окружение (db + backend + frontend, hot-reload) | 2026-06-29 21:15 | ✅ |
+| 1.1 | Модель User (id, login, password_hash, role, full_name, is_active, created_at) + миграция | 2026-06-29 21:20 | ✅ |
+| 1.2 | Хеширование паролей argon2 (hash_password/verify_password + 3 теста) | 2026-06-29 21:25 | ✅ |
+| 1.3 | Сидинг первого админа (CLI: python -m app.scripts.create_admin) | 2026-06-29 21:30 | ✅ |
+| 1.4 | Логин/логаут с httpOnly cookie сессией (itsdangerous) | 2026-06-29 21:35 | ✅ |
+| 1.5 | GET /api/auth/me — текущий пользователь | 2026-06-29 21:40 | ✅ |
+| 1.6 | require_role dependency для проверки ролей на бэкенде | 2026-06-29 21:45 | ✅ |
+| 1.7 | Фронт: страница логина (AuthContext, LoginPage, RequireAuth) | 2026-06-29 21:55 | ✅ |
+| 1.8 | Фронт: защита маршрутов (RequireAuth + redirect to /login) | 2026-06-29 21:55 | ✅ |
+| 1.9 | Управление пользователями CRUD (только админ, backend+frontend) | 2026-06-29 22:05 | ✅ |
+| 2.1 | Модель Client (code, full_name, description, tg_link) + миграция | 2026-06-29 22:15 | ✅ |
+| 2.2 | CRUD клиентов API (list/create/update/delete, admin only) | 2026-06-29 22:20 | ✅ |
+| 2.3 | Модель Supplier (name, contacts, details) + миграция | 2026-06-29 22:25 | ✅ |
+| 2.4 | CRUD поставщиков API | 2026-06-29 22:25 | ✅ |
+| 2.5 | Фронт: раздел «База данных» (вкладки Users/Clients/Suppliers) | 2026-06-29 22:30 | ✅ |
+| 3.1 | Абстракция хранилища файлов (LocalStorage + 4 теста) | 2026-06-29 22:35 | ✅ |
+| 3.2 | Загрузка/выдача файлов API (upload/download/delete) | 2026-06-29 22:40 | ✅ |
+| 3.3 | Фронт: компонент загрузки файлов (drag&drop, прогресс, список) | 2026-06-29 22:45 | ✅ |
+| 4.1 | Модель Order (number, client_id, manager_id, status, currency) + миграция, проверено в БД | 2026-06-30 09:10 | ✅ |
+| 4.2 | Автогенерация номера заказа (FOR UPDATE lock, тест на конкурентность) | 2026-06-30 09:20 | ✅ |
+| 4.3 | API создания/чтения заказа (POST/GET), проверено end-to-end | 2026-06-30 09:30 | ✅ |
+| 4.4 | Список заказов: фильтры (client/status/manager) + пагинация, проверено | 2026-06-30 09:45 | ✅ |
+| 4.5 | Права видимости заказов (manager видит только свои), проверено | 2026-06-30 10:00 | ✅ |
+| 4.6 | Фронт: AppShell (sidebar) + список заказов плиткой, фильтры, пагинация. Проверено в браузере — нашёл и исправил 2 бага: vite-proxy /api rewrite, LoginPage без редиректа | 2026-06-30 10:30 | ✅ |
 
 ## Блокеры / заметки
 - Docker DB на порту 5433 (не 5432 — конфликт с локальным Postgres)
 - pip install требует --trusted-host из-за SSL на этой машине
 - Python 3.11 путь: C:/Users/Абдул-Азиз/AppData/Local/Programs/Python/Python311/python.exe
 - Alembic использует psycopg (sync) для миграций, runtime — asyncpg
+- Docker Desktop иногда падает/перезапускается — если миграции не идут (Connect call failed на 5433), писать миграцию вручную (на основе модели), затем `alembic upgrade head` когда Docker снова поднимется
+- Vite dev-сервер по умолчанию слушает только [::1] (IPv6) — для preview/curl-проверки нужен флаг `--host 127.0.0.1` (см. .claude/launch.json)
+- Новые backend-роуты ВСЕ регистрируются с префиксом `/api/...` — vite.config.ts проксирует `/api` без rewrite (раньше rewrite вырезал префикс — баг, исправлен в Phase 4.6)
