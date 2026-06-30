@@ -6,6 +6,7 @@ import NotesSection from '../components/NotesSection'
 import ProductsTable from '../components/ProductsTable'
 import PaymentRequestsTab from '../components/PaymentRequestsTab'
 import LogisticsTab from '../components/LogisticsTab'
+import LedgerTab from '../components/LedgerTab'
 import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: string }> = {
@@ -22,17 +23,6 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'logistics', label: 'Логистика' },
   { key: 'finance', label: 'ДиР' },
 ]
-
-function EmptyTabState({ label }: { label: string }) {
-  return (
-    <div
-      className="rounded-2xl p-12 text-center"
-      style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
-    >
-      Раздел «{label}» в разработке
-    </div>
-  )
-}
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -123,7 +113,7 @@ export default function OrderDetailPage() {
       {activeTab === 'logistics' && (
         <LogisticsTab orderId={order.id} orderNumber={order.number} canEdit={canEdit} isAdmin={user?.role === 'admin'} />
       )}
-      {activeTab === 'finance' && <EmptyTabState label="ДиР" />}
+      {activeTab === 'finance' && <LedgerTab orderId={order.id} canEdit={canEdit} orderCurrency={order.currency} />}
 
       <NotesSection orderId={order.id} />
     </div>
