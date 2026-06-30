@@ -47,6 +47,20 @@ export async function fetchOrder(id: number): Promise<Order> {
   return res.json()
 }
 
+export async function setOrderStatus(orderId: number, status: OrderStatus): Promise<Order> {
+  const res = await fetch(`/api/orders/${orderId}/set-status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ status }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || 'Failed to set order status')
+  }
+  return res.json()
+}
+
 export async function createOrder(data: { client_id: number; currency?: string; details?: string }): Promise<Order> {
   const res = await fetch('/api/orders/', {
     method: 'POST',

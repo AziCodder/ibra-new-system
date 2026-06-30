@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { fetchOrder, type OrderStatus } from '../api/orders'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchOrder, setOrderStatus, type OrderStatus } from '../api/orders'
 import NotesSection from '../components/NotesSection'
 import ProductsTable from '../components/ProductsTable'
 import PaymentRequestsTab from '../components/PaymentRequestsTab'
@@ -31,11 +31,19 @@ export default function OrderDetailPage() {
   const { user } = useAuth()
   const orderId = Number(id)
   const [activeTab, setActiveTab] = useState<TabKey>('items')
+  const queryClient = useQueryClient()
 
   const { data: order, isLoading, isError } = useQuery({
     queryKey: ['order', orderId],
     queryFn: () => fetchOrder(orderId),
     enabled: !Number.isNaN(orderId),
+  })
+
+  const statusMutation = useMutation({
+    mutationFn: (status: OrderStatus) => setOrderStatus(orderId, status),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(['order', orderId], updated)
+    },
   })
 
   if (isLoading) {
@@ -82,6 +90,48 @@ export default function OrderDetailPage() {
         <span>·</span>
         <span>{order.currency}</span>
       </div>
+
+      {/* Status actions */}
+      {user && user.role !== 'observer' && (() => {
+        const isAdmin = user.role === 'admin'
+        const isOwner = user.role === 'manager' && user.id === order.manager_id
+        const busy = statusMutation.isPending
+        const err = statusMutation.error as Error | null
+        const actions: { label: string; status: OrderStatus; style: 'danger' | 'success' | 'ghost' }[] = []
+
+        if (order.status === 'in_progress') {
+          if (isAdmin) actions.push({ label: 'Завершить', status: 'completed', style: 'success' })
+          if (isAdmin || isOwner) actions.push({ label: 'Отменить', status: 'cancelled', style: 'danger' })
+        }
+        if (order.status === 'cancelled' && isAdmin) {
+          actions.push({ label: 'Вернуть в работу', status: 'in_progress', style: 'ghost' })
+        }
+        if (order.status === 'completed' && isAdmin) {
+          actions.push({ label: 'Вернуть в работу', status: 'in_progress', style: 'ghost' })
+        }
+
+        if (actions.length === 0) return null
+        return (
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            {actions.map((a) => (
+              <button
+                key={a.status}
+                disabled={busy}
+                onClick={() => statusMutation.mutate(a.status)}
+                className="text-xs font-medium px-3 py-1.5 rounded-lg cursor-pointer transition-opacity disabled:opacity-50"
+                style={{
+                  background: a.style === 'success' ? 'var(--color-success-bg)' : a.style === 'danger' ? 'var(--color-danger-bg)' : 'var(--color-surface-2)',
+                  color: a.style === 'success' ? 'var(--color-success)' : a.style === 'danger' ? 'var(--color-danger)' : 'var(--color-muted)',
+                  border: '1px solid transparent',
+                }}
+              >
+                {a.label}
+              </button>
+            ))}
+            {err && <span style={{ fontSize: 12, color: 'var(--color-danger)' }}>{err.message}</span>}
+          </div>
+        )
+      })()}
 
       {order.details && (
         <div

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +9,7 @@ from app.models.order import Order, OrderStatus
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user, require_role
 from app.schemas.order import OrderCreate, OrderListOut, OrderOut, OrderUpdate
+from app.services.order_completion import check_can_complete
 from app.services.order_dependencies import count_order_dependencies
 from app.services.order_number import generate_order_number
 
@@ -138,6 +140,75 @@ async def update_order(
     order, client_name, manager_name = row
 
     order.details = body.details
+    await session.commit()
+    await session.refresh(order)
+    return _to_order_out(order, client_name, manager_name)
+
+
+class OrderStatusIn(BaseModel):
+    status: OrderStatus
+
+
+@router.post("/{order_id}/set-status", response_model=OrderOut)
+async def set_order_status(
+    order_id: int,
+    body: OrderStatusIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Change order status according to ТЗ §13 transition rules.
+
+    Allowed transitions:
+    - in_progress → completed:  admin only, requires check_can_complete
+    - in_progress → cancelled:  admin or manager (own order)
+    - cancelled   → in_progress: admin only
+    - completed   → in_progress: admin only
+    - completed   → cancelled:  forbidden (409)
+    """
+    result = await session.execute(
+        select(Order, Client.full_name, User.full_name)
+        .join(Client, Order.client_id == Client.id)
+        .join(User, Order.manager_id == User.id)
+        .where(Order.id == order_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order, client_name, manager_name = row
+
+    if user.role == UserRole.manager and order.manager_id != user.id:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if user.role == UserRole.observer:
+        raise HTTPException(status_code=403, detail="Observers cannot change order status")
+
+    current = order.status
+    target = body.status
+
+    if current == target:
+        return _to_order_out(order, client_name, manager_name)
+
+    if current == OrderStatus.completed and target == OrderStatus.cancelled:
+        raise HTTPException(status_code=409, detail="A completed order cannot be cancelled")
+
+    if target == OrderStatus.completed:
+        if user.role != UserRole.admin:
+            raise HTTPException(status_code=403, detail="Only admins can mark an order as completed")
+        if not await check_can_complete(order_id, session):
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot complete: not all logistics accepted or payment requests not fully paid",
+            )
+
+    if current == OrderStatus.cancelled and target == OrderStatus.in_progress:
+        if user.role != UserRole.admin:
+            raise HTTPException(status_code=403, detail="Only admins can revert a cancelled order")
+
+    if current == OrderStatus.completed and target == OrderStatus.in_progress:
+        if user.role != UserRole.admin:
+            raise HTTPException(status_code=403, detail="Only admins can revert a completed order")
+
+    order.status = target
     await session.commit()
     await session.refresh(order)
     return _to_order_out(order, client_name, manager_name)
