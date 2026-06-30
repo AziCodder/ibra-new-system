@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchOrder, type OrderStatus } from '../api/orders'
 import NotesSection from '../components/NotesSection'
 import ProductsTable from '../components/ProductsTable'
+import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: string }> = {
   in_progress: { label: 'В работе', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
@@ -34,6 +35,7 @@ function EmptyTabState({ label }: { label: string }) {
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const orderId = Number(id)
   const [activeTab, setActiveTab] = useState<TabKey>('items')
 
@@ -60,6 +62,7 @@ export default function OrderDetailPage() {
 
   const badge = STATUS_BADGE[order.status]
   const date = new Date(order.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })
+  const canEditProducts = !!user && (user.role === 'admin' || (user.role === 'manager' && user.id === order.manager_id))
 
   return (
     <div className="p-6">
@@ -113,7 +116,7 @@ export default function OrderDetailPage() {
         ))}
       </div>
 
-      {activeTab === 'items' && <ProductsTable orderId={order.id} />}
+      {activeTab === 'items' && <ProductsTable orderId={order.id} canEdit={canEditProducts} />}
       {activeTab === 'payments' && <EmptyTabState label="Запросы на оплату" />}
       {activeTab === 'logistics' && <EmptyTabState label="Логистика" />}
       {activeTab === 'finance' && <EmptyTabState label="ДиР" />}
