@@ -1,7 +1,8 @@
 import enum
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -24,3 +25,6 @@ class Order(Base):
     currency: Mapped[str] = mapped_column(String(10), default="USD")
     details: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Snapshot fields — populated by snapshot_order_metrics() when is_ready
+    profit_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    processing_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
