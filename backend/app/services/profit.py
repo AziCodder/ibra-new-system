@@ -9,6 +9,7 @@ from app.models.logistics import Logistics, LogisticsStatus
 from app.models.order import Order
 from app.models.payment import Payment
 from app.models.payment_request import PaymentRequest
+from app.models.product import Product
 
 
 @dataclass
@@ -19,6 +20,48 @@ class ProfitBreakdown:
     other_expenses: Decimal
     profit: Decimal
     currency: str
+    is_ready: bool
+
+
+async def _check_readiness(order_id: int, session: AsyncSession) -> bool:
+    """Return True only when the order is fully received and nothing is still in transit.
+
+    Conditions (ТЗ §11):
+    1. The order has at least one product.
+    2. No logistics entries are in_transit status (everything has been settled).
+    3. For every product the sum of accepted logistics quantities >= product quantity.
+    """
+    has_products = (
+        await session.execute(select(Product.id).where(Product.order_id == order_id).limit(1))
+    ).scalar_one_or_none()
+    if has_products is None:
+        return False
+
+    in_transit = (
+        await session.execute(
+            select(Logistics.id)
+            .where(Logistics.order_id == order_id, Logistics.status == LogisticsStatus.in_transit)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if in_transit is not None:
+        return False
+
+    # Correlated subquery: accepted shipped quantity per product
+    shipped_sub = (
+        select(func.coalesce(func.sum(Logistics.quantity), Decimal("0")))
+        .where(Logistics.product_id == Product.id, Logistics.status == LogisticsStatus.accepted)
+        .correlate(Product)
+        .scalar_subquery()
+    )
+    undershipped = (
+        await session.execute(
+            select(Product.id)
+            .where(Product.order_id == order_id, shipped_sub < Product.quantity)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return undershipped is None
 
 
 async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakdown:
@@ -71,6 +114,8 @@ async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakd
         await session.execute(select(Order.currency).where(Order.id == order_id))
     ).scalar_one()
 
+    is_ready = await _check_readiness(order_id, session)
+
     return ProfitBreakdown(
         income=income,
         purchases=purchases,
@@ -78,4 +123,5 @@ async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakd
         other_expenses=other_expenses,
         profit=income - purchases - logistics - other_expenses,
         currency=currency,
+        is_ready=is_ready,
     )

@@ -298,5 +298,162 @@ async def test_in_transit_logistics_not_counted():
 
         assert b.logistics == Decimal("0")
         assert b.profit == Decimal("0")
+        assert b.is_ready is False  # in_transit logistics → not ready
     finally:
         await _cleanup("TSTPRFT3", ["prft3_mgr"])
+
+
+# ── Readiness-condition tests (ТЗ §11 §9.2) ──────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_readiness_false_no_products():
+    """Order with no products is not ready (nothing shipped)."""
+    try:
+        async with async_session_factory() as session:
+            client = Client(code="TSTPRFTR0", full_name="Ready Empty")
+            mgr = User(login="prftr0_mgr", password_hash=hash_password("x"), role=UserRole.manager, full_name="RMgr0")
+            session.add_all([client, mgr])
+            await session.commit()
+            for o in (client, mgr):
+                await session.refresh(o)
+            order = Order(number="TSTPRFTR0-1", client_id=client.id, manager_id=mgr.id,
+                          status=OrderStatus.in_progress, currency="RUB")
+            session.add(order)
+            await session.commit()
+            await session.refresh(order)
+
+        async with async_session_factory() as session:
+            b = await calculate_profit(order.id, session)
+
+        assert b.is_ready is False
+    finally:
+        await _cleanup("TSTPRFTR0", ["prftr0_mgr"])
+
+
+@pytest.mark.asyncio
+async def test_readiness_false_partial_shipment():
+    """Product qty=100, only 50 accepted → not ready."""
+    try:
+        async with async_session_factory() as session:
+            client = Client(code="TSTPRFTR1", full_name="Ready Partial")
+            mgr = User(login="prftr1_mgr", password_hash=hash_password("x"), role=UserRole.manager, full_name="RMgr1")
+            adm = User(login="prftr1_adm", password_hash=hash_password("x"), role=UserRole.admin, full_name="RAdm1")
+            sup = Supplier(name="PrftSupplierR1")
+            session.add_all([client, mgr, adm, sup])
+            await session.commit()
+            for o in (client, mgr, adm, sup):
+                await session.refresh(o)
+            order = Order(number="TSTPRFTR1-1", client_id=client.id, manager_id=mgr.id,
+                          status=OrderStatus.in_progress, currency="RUB")
+            session.add(order)
+            await session.commit()
+            await session.refresh(order)
+
+            product = Product(order_id=order.id, supplier_id=sup.id, name="G",
+                              quantity=Decimal("100.000"), price=Decimal("10.00"), currency="RUB")
+            session.add(product)
+            await session.commit()
+            await session.refresh(product)
+
+            # Only 50 accepted out of 100
+            session.add(Logistics(
+                order_id=order.id, product_id=product.id, created_by_id=adm.id,
+                quantity=Decimal("50.000"), tracking="R1-TRK", ship_date=_NOW,
+                status=LogisticsStatus.accepted,
+                expense_amount=Decimal("0.00"), currency="RUB", exchange_rate=Decimal("1.000000"),
+            ))
+            await session.commit()
+
+        async with async_session_factory() as session:
+            b = await calculate_profit(order.id, session)
+
+        assert b.is_ready is False
+    finally:
+        await _cleanup("TSTPRFTR1", ["prftr1_mgr", "prftr1_adm"])
+
+
+@pytest.mark.asyncio
+async def test_readiness_true_fully_shipped_and_accepted():
+    """Product qty=50, all 50 accepted, no in_transit → ready."""
+    try:
+        async with async_session_factory() as session:
+            client = Client(code="TSTPRFTR2", full_name="Ready Full")
+            mgr = User(login="prftr2_mgr", password_hash=hash_password("x"), role=UserRole.manager, full_name="RMgr2")
+            adm = User(login="prftr2_adm", password_hash=hash_password("x"), role=UserRole.admin, full_name="RAdm2")
+            sup = Supplier(name="PrftSupplierR2")
+            session.add_all([client, mgr, adm, sup])
+            await session.commit()
+            for o in (client, mgr, adm, sup):
+                await session.refresh(o)
+            order = Order(number="TSTPRFTR2-1", client_id=client.id, manager_id=mgr.id,
+                          status=OrderStatus.in_progress, currency="RUB")
+            session.add(order)
+            await session.commit()
+            await session.refresh(order)
+
+            product = Product(order_id=order.id, supplier_id=sup.id, name="G",
+                              quantity=Decimal("50.000"), price=Decimal("10.00"), currency="RUB")
+            session.add(product)
+            await session.commit()
+            await session.refresh(product)
+
+            # Exactly 50 accepted
+            session.add(Logistics(
+                order_id=order.id, product_id=product.id, created_by_id=adm.id,
+                quantity=Decimal("50.000"), tracking="R2-TRK", ship_date=_NOW,
+                status=LogisticsStatus.accepted,
+                expense_amount=Decimal("0.00"), currency="RUB", exchange_rate=Decimal("1.000000"),
+            ))
+            await session.commit()
+
+        async with async_session_factory() as session:
+            b = await calculate_profit(order.id, session)
+
+        assert b.is_ready is True
+    finally:
+        await _cleanup("TSTPRFTR2", ["prftr2_mgr", "prftr2_adm"])
+
+
+@pytest.mark.asyncio
+async def test_readiness_false_in_transit_blocks_even_if_qty_covered():
+    """Qty fully covered (accepted ≥ product.qty) but one entry still in_transit → not ready."""
+    try:
+        async with async_session_factory() as session:
+            client = Client(code="TSTPRFTR3", full_name="Ready InTransit")
+            mgr = User(login="prftr3_mgr", password_hash=hash_password("x"), role=UserRole.manager, full_name="RMgr3")
+            adm = User(login="prftr3_adm", password_hash=hash_password("x"), role=UserRole.admin, full_name="RAdm3")
+            sup = Supplier(name="PrftSupplierR3")
+            session.add_all([client, mgr, adm, sup])
+            await session.commit()
+            for o in (client, mgr, adm, sup):
+                await session.refresh(o)
+            order = Order(number="TSTPRFTR3-1", client_id=client.id, manager_id=mgr.id,
+                          status=OrderStatus.in_progress, currency="RUB")
+            session.add(order)
+            await session.commit()
+            await session.refresh(order)
+
+            product = Product(order_id=order.id, supplier_id=sup.id, name="G",
+                              quantity=Decimal("30.000"), price=Decimal("10.00"), currency="RUB")
+            session.add(product)
+            await session.commit()
+            await session.refresh(product)
+
+            # 30 accepted (covers qty) but another 10 still in_transit
+            session.add_all([
+                Logistics(order_id=order.id, product_id=product.id, created_by_id=adm.id,
+                          quantity=Decimal("30.000"), tracking="R3-TRK-A", ship_date=_NOW,
+                          status=LogisticsStatus.accepted,
+                          expense_amount=Decimal("0.00"), currency="RUB", exchange_rate=Decimal("1.000000")),
+                Logistics(order_id=order.id, product_id=product.id, created_by_id=mgr.id,
+                          quantity=Decimal("10.000"), tracking="R3-TRK-B", ship_date=_NOW,
+                          status=LogisticsStatus.in_transit),
+            ])
+            await session.commit()
+
+        async with async_session_factory() as session:
+            b = await calculate_profit(order.id, session)
+
+        assert b.is_ready is False  # in_transit present even though qty is covered
+    finally:
+        await _cleanup("TSTPRFTR3", ["prftr3_mgr", "prftr3_adm"])
