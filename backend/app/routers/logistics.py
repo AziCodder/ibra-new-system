@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.models.client import Client
 from app.models.logistics import Logistics, LogisticsStatus
 from app.models.logistics_comment import LogisticsComment
 from app.models.order import Order
@@ -12,6 +13,7 @@ from app.routers.auth import get_current_user
 from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsOut, LogisticsUpdate
 from app.schemas.logistics_comment import LogisticsCommentCreate, LogisticsCommentOut
 from app.services.logistics_validation import LogisticsValidationError, validate_logistics_quantity
+from app.services.notifications import notify
 
 router = APIRouter(prefix="/api/orders/{order_id}/logistics", tags=["logistics"])
 
@@ -312,4 +314,22 @@ async def create_logistics_comment(
         author_name=user.full_name,
         text=comment.text,
         created_at=comment.created_at,
+    )
+
+
+@router.post("/{logistics_id}/notify-received", status_code=204)
+async def notify_logistics_received(
+    order_id: int,
+    logistics_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """«Отправить уведомление о получении» — fires the notify() hook; Phase 11 wires the real Telegram send."""
+    order = await _get_order_for_write(order_id, user, session)
+    logistics = await _get_logistics_or_404(order_id, logistics_id, session)
+
+    client = (await session.execute(select(Client).where(Client.id == order.client_id))).scalar_one()
+    notify(
+        client.telegram_group_link,
+        f"Товар по заказу {order.number} получен. Трекинг: {logistics.tracking or '—'}.",
     )

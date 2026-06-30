@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
@@ -19,6 +20,7 @@ from app.routers.logistics import (
     delete_logistics,
     get_logistics,
     list_logistics,
+    notify_logistics_received,
     unaccept_logistics,
     update_logistics,
 )
@@ -543,5 +545,50 @@ async def test_update_rejects_status_accepted_with_422():
                     order.id, created.id, LogisticsUpdate(status=LogisticsStatus.accepted), admin, session
                 )
             assert exc_info.value.status_code == 422
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_notify_received_calls_notify_with_client_group_and_tracking():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), tracking="M77-170566", ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with patch("app.routers.logistics.notify") as mock_notify:
+                await notify_logistics_received(order.id, created.id, owner, session)
+
+            mock_notify.assert_called_once()
+            target, message = mock_notify.call_args[0]
+            assert target == client.telegram_group_link
+            assert order.number in message
+            assert "M77-170566" in message
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_observer_cannot_trigger_notify_received():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await notify_logistics_received(order.id, created.id, observer, session)
+            assert exc_info.value.status_code == 403
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
