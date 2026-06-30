@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.routers.auth import router as auth_router
 from app.routers.clients import router as clients_router
 from app.routers.files import router as files_router
+from app.routers.logistics import router as logistics_router
 from app.routers.notes import router as notes_router
 from app.routers.orders import router as orders_router
 from app.routers.payment_requests import router as payment_requests_router
@@ -31,6 +32,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(clients_router)
 app.include_router(files_router)
+app.include_router(logistics_router)
 app.include_router(notes_router)
 app.include_router(orders_router)
 app.include_router(payment_requests_router)
