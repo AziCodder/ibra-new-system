@@ -15,7 +15,9 @@ class OrderOut(BaseModel):
     id: int
     number: str
     client_id: int
+    client_name: str
     manager_id: int
+    manager_name: str
     status: OrderStatus
     currency: str
     details: str

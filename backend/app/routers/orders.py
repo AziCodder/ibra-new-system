@@ -13,6 +13,21 @@ from app.services.order_number import generate_order_number
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
 
+def _to_order_out(order: Order, client_name: str, manager_name: str) -> OrderOut:
+    return OrderOut(
+        id=order.id,
+        number=order.number,
+        client_id=order.client_id,
+        client_name=client_name,
+        manager_id=order.manager_id,
+        manager_name=manager_name,
+        status=order.status,
+        currency=order.currency,
+        details=order.details,
+        created_at=order.created_at,
+    )
+
+
 @router.post("/", response_model=OrderOut, status_code=201)
 async def create_order(
     body: OrderCreate,
@@ -20,7 +35,8 @@ async def create_order(
     session: AsyncSession = Depends(get_session),
 ):
     client_result = await session.execute(select(Client).where(Client.id == body.client_id))
-    if not client_result.scalar_one_or_none():
+    client = client_result.scalar_one_or_none()
+    if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
     number = await generate_order_number(session, body.client_id)
@@ -35,7 +51,7 @@ async def create_order(
     session.add(order)
     await session.commit()
     await session.refresh(order)
-    return order
+    return _to_order_out(order, client.full_name, user.full_name)
 
 
 @router.get("/", response_model=OrderListOut)
@@ -61,14 +77,20 @@ async def list_orders(
         filters.append(Order.manager_id == manager_id)
 
     count_query = select(func.count()).select_from(Order)
-    list_query = select(Order).order_by(Order.id.desc())
+    list_query = (
+        select(Order, Client.full_name, User.full_name)
+        .join(Client, Order.client_id == Client.id)
+        .join(User, Order.manager_id == User.id)
+        .order_by(Order.id.desc())
+    )
     for f in filters:
         count_query = count_query.where(f)
         list_query = list_query.where(f)
 
     total = (await session.execute(count_query)).scalar_one()
     list_query = list_query.offset((page - 1) * page_size).limit(page_size)
-    items = (await session.execute(list_query)).scalars().all()
+    rows = (await session.execute(list_query)).all()
+    items = [_to_order_out(order, client_name, manager_name) for order, client_name, manager_name in rows]
 
     return OrderListOut(items=items, total=total, page=page, page_size=page_size)
 
@@ -79,10 +101,16 @@ async def get_order(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    result = await session.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    if not order:
+    result = await session.execute(
+        select(Order, Client.full_name, User.full_name)
+        .join(Client, Order.client_id == Client.id)
+        .join(User, Order.manager_id == User.id)
+        .where(Order.id == order_id)
+    )
+    row = result.first()
+    if not row:
         raise HTTPException(status_code=404, detail="Order not found")
+    order, client_name, manager_name = row
     if user.role == UserRole.manager and order.manager_id != user.id:
         raise HTTPException(status_code=404, detail="Order not found")
-    return order
+    return _to_order_out(order, client_name, manager_name)
