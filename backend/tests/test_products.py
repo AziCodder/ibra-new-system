@@ -13,6 +13,7 @@ from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.products import create_product, delete_product, list_products, update_product
 from app.schemas.product import ProductCreate, ProductUpdate
+from app.services.product_dependencies import count_product_dependencies
 
 
 async def _setup():
@@ -76,6 +77,32 @@ async def test_create_update_delete_product_lifecycle():
             assert updated.price == Decimal("15.00")
             assert updated.quantity == Decimal("5")
             assert updated.name == "Widget"
+
+        async with async_session_factory() as session:
+            await delete_product(order.id, created.id, owner, session)
+
+        async with async_session_factory() as session:
+            products = await list_products(order.id, owner, session)
+            assert products == []
+    finally:
+        await _cleanup(client.id, [owner.id, other.id, observer.id], supplier.id)
+
+
+@pytest.mark.asyncio
+async def test_count_product_dependencies_is_zero_with_no_related_entities():
+    client, owner, other, observer, supplier, order = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_product(
+                order.id,
+                ProductCreate(supplier_id=supplier.id, name="Widget", quantity=Decimal("1"), price=Decimal("1")),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            count = await count_product_dependencies(session, created.id)
+            assert count == 0
 
         async with async_session_factory() as session:
             await delete_product(order.id, created.id, owner, session)

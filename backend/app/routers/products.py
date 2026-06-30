@@ -9,6 +9,7 @@ from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
 from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
+from app.services.product_dependencies import count_product_dependencies
 
 router = APIRouter(prefix="/api/orders/{order_id}/products", tags=["products"])
 
@@ -137,6 +138,13 @@ async def delete_product(
     product = result.scalar_one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    dependency_count = await count_product_dependencies(session, product_id)
+    if dependency_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Product has {dependency_count} related record(s) and cannot be deleted",
+        )
 
     await session.delete(product)
     await session.commit()
