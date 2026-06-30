@@ -8,7 +8,7 @@ from app.models.order import Order
 from app.models.product import Product
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
-from app.schemas.logistics import LogisticsCreate, LogisticsOut, LogisticsUpdate
+from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsOut, LogisticsUpdate
 from app.services.logistics_validation import LogisticsValidationError, validate_logistics_quantity
 
 router = APIRouter(prefix="/api/orders/{order_id}/logistics", tags=["logistics"])
@@ -60,6 +60,11 @@ def _check_deletable(logistics: Logistics) -> None:
         raise HTTPException(status_code=403, detail="Only shipments in transit can be deleted")
 
 
+def _require_admin(user: User) -> None:
+    if user.role != UserRole.admin:
+        raise HTTPException(status_code=403, detail="Only admins can accept or unaccept a shipment")
+
+
 async def _to_logistics_out(logistics: Logistics, session: AsyncSession) -> LogisticsOut:
     product = (await session.execute(select(Product).where(Product.id == logistics.product_id))).scalar_one()
     creator = (await session.execute(select(User).where(User.id == logistics.created_by_id))).scalar_one()
@@ -81,6 +86,7 @@ async def _to_logistics_out(logistics: Logistics, session: AsyncSession) -> Logi
         expense_amount=logistics.expense_amount,
         currency=logistics.currency,
         exchange_rate=logistics.exchange_rate,
+        acceptance_note=logistics.acceptance_note,
         created_at=logistics.created_at,
     )
 
@@ -121,6 +127,9 @@ async def create_logistics(
     await _get_order_for_write(order_id, user, session)
     await _get_product_in_order(order_id, body.product_id, session)
 
+    if body.status == LogisticsStatus.accepted:
+        _require_admin(user)
+
     try:
         await validate_logistics_quantity(session, body.product_id, body.quantity)
     except LogisticsValidationError as e:
@@ -140,6 +149,7 @@ async def create_logistics(
         expense_amount=body.expense_amount,
         currency=body.currency,
         exchange_rate=body.exchange_rate,
+        acceptance_note=body.acceptance_note,
     )
     session.add(logistics)
     await session.commit()
@@ -160,6 +170,9 @@ async def update_logistics(
     _check_manager_can_edit(logistics, user)
 
     updates = body.model_dump(exclude_unset=True)
+
+    if updates.get("status") == LogisticsStatus.accepted:
+        raise HTTPException(status_code=422, detail="Use POST /accept to accept a shipment")
 
     if "quantity" in updates:
         try:
@@ -190,3 +203,56 @@ async def delete_logistics(
 
     await session.delete(logistics)
     await session.commit()
+
+
+@router.post("/{logistics_id}/accept", response_model=LogisticsOut)
+async def accept_logistics(
+    order_id: int,
+    logistics_id: int,
+    body: LogisticsAccept,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _get_order_for_write(order_id, user, session)
+    _require_admin(user)
+    logistics = await _get_logistics_or_404(order_id, logistics_id, session)
+
+    if logistics.status != LogisticsStatus.in_transit:
+        raise HTTPException(status_code=409, detail="Only shipments in transit can be accepted")
+
+    logistics.status = LogisticsStatus.accepted
+    logistics.received_date = body.received_date
+    logistics.expense_amount = body.expense_amount
+    logistics.currency = body.currency
+    logistics.exchange_rate = body.exchange_rate
+    logistics.acceptance_note = body.note
+
+    await session.commit()
+    await session.refresh(logistics)
+    return await _to_logistics_out(logistics, session)
+
+
+@router.post("/{logistics_id}/unaccept", response_model=LogisticsOut)
+async def unaccept_logistics(
+    order_id: int,
+    logistics_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _get_order_for_write(order_id, user, session)
+    _require_admin(user)
+    logistics = await _get_logistics_or_404(order_id, logistics_id, session)
+
+    if logistics.status != LogisticsStatus.accepted:
+        raise HTTPException(status_code=409, detail="Only accepted shipments can be unaccepted")
+
+    logistics.status = LogisticsStatus.in_transit
+    logistics.received_date = None
+    logistics.expense_amount = None
+    logistics.currency = None
+    logistics.exchange_rate = None
+    logistics.acceptance_note = None
+
+    await session.commit()
+    await session.refresh(logistics)
+    return await _to_logistics_out(logistics, session)

@@ -14,13 +14,15 @@ from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.logistics import (
+    accept_logistics,
     create_logistics,
     delete_logistics,
     get_logistics,
     list_logistics,
+    unaccept_logistics,
     update_logistics,
 )
-from app.schemas.logistics import LogisticsCreate, LogisticsUpdate
+from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsUpdate
 
 SHIP_DATE = datetime.now(UTC)
 
@@ -224,7 +226,7 @@ async def test_manager_cannot_edit_accepted_logistics():
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.accepted,
                 ),
-                owner,
+                admin,
                 session,
             )
 
@@ -249,7 +251,7 @@ async def test_admin_can_edit_accepted_logistics():
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.accepted,
                 ),
-                owner,
+                admin,
                 session,
             )
 
@@ -273,7 +275,7 @@ async def test_delete_blocked_unless_in_transit_for_any_role():
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.accepted,
                 ),
-                owner,
+                admin,
                 session,
             )
 
@@ -281,5 +283,265 @@ async def test_delete_blocked_unless_in_transit_for_any_role():
             with pytest.raises(HTTPException) as exc_info:
                 await delete_logistics(order.id, created.id, admin, session)
             assert exc_info.value.status_code == 403
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_admin_can_accept_in_transit_shipment():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            accepted = await accept_logistics(
+                order.id,
+                created.id,
+                LogisticsAccept(
+                    received_date=SHIP_DATE,
+                    expense_amount=Decimal("100.00"),
+                    currency="USD",
+                    exchange_rate=Decimal("1.0"),
+                    note="Arrived fine",
+                ),
+                admin,
+                session,
+            )
+            assert accepted.status == LogisticsStatus.accepted
+            assert accepted.received_date == SHIP_DATE
+            assert accepted.expense_amount == Decimal("100.00")
+            assert accepted.currency == "USD"
+            assert accepted.exchange_rate == Decimal("1.0")
+            assert accepted.acceptance_note == "Arrived fine"
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_accept_shipment():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await accept_logistics(
+                    order.id,
+                    created.id,
+                    LogisticsAccept(
+                        received_date=SHIP_DATE,
+                        expense_amount=Decimal("100.00"),
+                        currency="USD",
+                        exchange_rate=Decimal("1.0"),
+                    ),
+                    owner,
+                    session,
+                )
+            assert exc_info.value.status_code == 403
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_accept_rejects_non_in_transit_shipment_with_409():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(
+                    product_id=product.id,
+                    quantity=Decimal("5"),
+                    ship_date=SHIP_DATE,
+                    status=LogisticsStatus.accepted,
+                ),
+                admin,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await accept_logistics(
+                    order.id,
+                    created.id,
+                    LogisticsAccept(
+                        received_date=SHIP_DATE,
+                        expense_amount=Decimal("50.00"),
+                        currency="USD",
+                        exchange_rate=Decimal("1.0"),
+                    ),
+                    admin,
+                    session,
+                )
+            assert exc_info.value.status_code == 409
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_admin_can_unaccept_and_clears_receipt_fields():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            await accept_logistics(
+                order.id,
+                created.id,
+                LogisticsAccept(
+                    received_date=SHIP_DATE,
+                    expense_amount=Decimal("100.00"),
+                    currency="USD",
+                    exchange_rate=Decimal("1.0"),
+                    note="Arrived fine",
+                ),
+                admin,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            unaccepted = await unaccept_logistics(order.id, created.id, admin, session)
+            assert unaccepted.status == LogisticsStatus.in_transit
+            assert unaccepted.received_date is None
+            assert unaccepted.expense_amount is None
+            assert unaccepted.currency is None
+            assert unaccepted.exchange_rate is None
+            assert unaccepted.acceptance_note is None
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_manager_cannot_unaccept_shipment():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(
+                    product_id=product.id,
+                    quantity=Decimal("5"),
+                    ship_date=SHIP_DATE,
+                    status=LogisticsStatus.accepted,
+                ),
+                admin,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await unaccept_logistics(order.id, created.id, owner, session)
+            assert exc_info.value.status_code == 403
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_unaccept_rejects_non_accepted_shipment_with_409():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await unaccept_logistics(order.id, created.id, admin, session)
+            assert exc_info.value.status_code == 409
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_reaccept_after_unaccept_round_trip():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            await accept_logistics(
+                order.id,
+                created.id,
+                LogisticsAccept(
+                    received_date=SHIP_DATE,
+                    expense_amount=Decimal("100.00"),
+                    currency="USD",
+                    exchange_rate=Decimal("1.0"),
+                ),
+                admin,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            await unaccept_logistics(order.id, created.id, admin, session)
+
+        async with async_session_factory() as session:
+            reaccepted = await accept_logistics(
+                order.id,
+                created.id,
+                LogisticsAccept(
+                    received_date=SHIP_DATE,
+                    expense_amount=Decimal("75.00"),
+                    currency="EUR",
+                    exchange_rate=Decimal("0.9"),
+                    note="Second time",
+                ),
+                admin,
+                session,
+            )
+            assert reaccepted.status == LogisticsStatus.accepted
+            assert reaccepted.expense_amount == Decimal("75.00")
+            assert reaccepted.currency == "EUR"
+            assert reaccepted.acceptance_note == "Second time"
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_status_accepted_with_422():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await update_logistics(
+                    order.id, created.id, LogisticsUpdate(status=LogisticsStatus.accepted), admin, session
+                )
+            assert exc_info.value.status_code == 422
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])

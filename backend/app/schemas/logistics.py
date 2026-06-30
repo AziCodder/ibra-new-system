@@ -18,19 +18,26 @@ class LogisticsCreate(BaseModel):
     expense_amount: Decimal | None = None
     currency: str | None = None
     exchange_rate: Decimal | None = None
+    acceptance_note: str | None = None
 
 
 class LogisticsUpdate(BaseModel):
+    """Excludes receipt fields — those only change via accept/unaccept, atomically."""
+
     quantity: Decimal | None = Field(default=None, gt=0)
     tracking: str | None = None
     ship_date: datetime | None = None
     invoice_file_key: str | None = None
     details: str | None = None
     status: LogisticsStatus | None = None
-    received_date: datetime | None = None
-    expense_amount: Decimal | None = None
-    currency: str | None = None
-    exchange_rate: Decimal | None = None
+
+
+class LogisticsAccept(BaseModel):
+    received_date: datetime
+    expense_amount: Decimal = Field(gt=0)
+    currency: str
+    exchange_rate: Decimal = Field(gt=0)
+    note: str = ""
 
 
 class LogisticsOut(BaseModel):
@@ -50,6 +57,7 @@ class LogisticsOut(BaseModel):
     expense_amount: Decimal | None
     currency: str | None
     exchange_rate: Decimal | None
+    acceptance_note: str | None
     created_at: datetime
 
     model_config = {"from_attributes": True}

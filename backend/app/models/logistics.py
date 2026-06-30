@@ -33,4 +33,5 @@ class Logistics(Base):
     expense_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     currency: Mapped[str | None] = mapped_column(String(10), default=None)
     exchange_rate: Mapped[Decimal | None] = mapped_column(Numeric(14, 6), default=None)
+    acceptance_note: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
