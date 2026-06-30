@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
@@ -7,7 +7,7 @@ from app.models.client import Client
 from app.models.order import Order, OrderStatus
 from app.models.user import User
 from app.routers.auth import get_current_user
-from app.schemas.order import OrderCreate, OrderOut
+from app.schemas.order import OrderCreate, OrderListOut, OrderOut
 from app.services.order_number import generate_order_number
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -36,6 +36,37 @@ async def create_order(
     await session.commit()
     await session.refresh(order)
     return order
+
+
+@router.get("/", response_model=OrderListOut)
+async def list_orders(
+    client_id: int | None = None,
+    status: OrderStatus | None = None,
+    manager_id: int | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    filters = []
+    if client_id is not None:
+        filters.append(Order.client_id == client_id)
+    if status is not None:
+        filters.append(Order.status == status)
+    if manager_id is not None:
+        filters.append(Order.manager_id == manager_id)
+
+    count_query = select(func.count()).select_from(Order)
+    list_query = select(Order).order_by(Order.id.desc())
+    for f in filters:
+        count_query = count_query.where(f)
+        list_query = list_query.where(f)
+
+    total = (await session.execute(count_query)).scalar_one()
+    list_query = list_query.offset((page - 1) * page_size).limit(page_size)
+    items = (await session.execute(list_query)).scalars().all()
+
+    return OrderListOut(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{order_id}", response_model=OrderOut)

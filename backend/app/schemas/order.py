@@ -22,3 +22,10 @@ class OrderOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class OrderListOut(BaseModel):
+    items: list[OrderOut]
+    total: int
+    page: int
+    page_size: int
