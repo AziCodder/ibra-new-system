@@ -1,10 +1,16 @@
+from decimal import Decimal
+
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import delete, select
 
 from app.core.database import async_session_factory
 from app.models.client import Client
 from app.models.order import Order, OrderStatus
+from app.models.product import Product
+from app.models.supplier import Supplier
 from app.models.user import User, UserRole
+from app.routers.orders import delete_order
 from app.services.order_dependencies import count_order_dependencies
 
 
@@ -34,6 +40,9 @@ async def _setup_order():
 
 async def _cleanup(client_id: int):
     async with async_session_factory() as session:
+        await session.execute(
+            delete(Product).where(Product.order_id.in_(select(Order.id).where(Order.client_id == client_id)))
+        )
         await session.execute(delete(Order).where(Order.client_id == client_id))
         await session.execute(delete(Client).where(Client.id == client_id))
         await session.commit()
@@ -86,3 +95,70 @@ async def test_delete_order_with_no_dependencies_removes_row():
             assert result.scalar_one_or_none() is None
     finally:
         await _cleanup(client.id)
+
+
+@pytest.mark.asyncio
+async def test_count_order_dependencies_counts_products():
+    client, order = await _setup_order()
+    try:
+        async with async_session_factory() as session:
+            supplier = Supplier(name="Dependency Test Supplier")
+            session.add(supplier)
+            await session.commit()
+            await session.refresh(supplier)
+
+            session.add(
+                Product(
+                    order_id=order.id,
+                    supplier_id=supplier.id,
+                    name="Widget",
+                    quantity=Decimal("2"),
+                    price=Decimal("10.50"),
+                    currency="USD",
+                )
+            )
+            await session.commit()
+
+        async with async_session_factory() as session:
+            count = await count_order_dependencies(session, order.id)
+            assert count == 1
+    finally:
+        await _cleanup(client.id)
+        async with async_session_factory() as session:
+            await session.execute(delete(Supplier).where(Supplier.name == "Dependency Test Supplier"))
+            await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_delete_order_blocked_when_products_exist():
+    client, order = await _setup_order()
+    try:
+        async with async_session_factory() as session:
+            supplier = Supplier(name="Blocked Delete Supplier")
+            session.add(supplier)
+            await session.commit()
+            await session.refresh(supplier)
+
+            session.add(
+                Product(
+                    order_id=order.id,
+                    supplier_id=supplier.id,
+                    name="Widget",
+                    quantity=Decimal("1"),
+                    price=Decimal("5.00"),
+                    currency="USD",
+                )
+            )
+            await session.commit()
+
+        async with async_session_factory() as session:
+            admin_result = await session.execute(select(User).where(User.role == UserRole.admin).limit(1))
+            admin = admin_result.scalar_one()
+            with pytest.raises(HTTPException) as exc_info:
+                await delete_order(order.id, admin, session)
+            assert exc_info.value.status_code == 409
+    finally:
+        await _cleanup(client.id)
+        async with async_session_factory() as session:
+            await session.execute(delete(Supplier).where(Supplier.name == "Blocked Delete Supplier"))
+            await session.commit()
