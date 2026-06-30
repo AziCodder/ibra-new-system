@@ -14,7 +14,15 @@ function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
 }
 
-export default function PaymentRequestsTab({ orderId, canEdit }: { orderId: number; canEdit: boolean }) {
+export default function PaymentRequestsTab({
+  orderId,
+  canEdit,
+  orderCurrency,
+}: {
+  orderId: number
+  canEdit: boolean
+  orderCurrency: string
+}) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null)
 
@@ -79,16 +87,20 @@ export default function PaymentRequestsTab({ orderId, canEdit }: { orderId: numb
                 <div className="space-y-1 text-sm mb-3">
                   <div className="flex justify-between" style={{ color: 'var(--color-muted)' }}>
                     <span>Всего</span>
-                    <span style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{formatNumber(total)}</span>
+                    <span style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                      {formatNumber(total)} {request.currency}
+                    </span>
                   </div>
                   <div className="flex justify-between" style={{ color: 'var(--color-muted)' }}>
                     <span>Оплачено</span>
-                    <span style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>{formatNumber(paid)}</span>
+                    <span style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                      {formatNumber(paid)} {orderCurrency}
+                    </span>
                   </div>
                   <div className="flex justify-between" style={{ color: 'var(--color-muted)' }}>
                     <span>Остаток</span>
                     <span style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatNumber(Number(request.remaining_amount))}
+                      {formatNumber(Number(request.remaining_amount))} {request.currency}
                     </span>
                   </div>
                 </div>
@@ -115,6 +127,7 @@ export default function PaymentRequestsTab({ orderId, canEdit }: { orderId: numb
           orderId={orderId}
           request={selectedRequest}
           canEdit={canEdit}
+          orderCurrency={orderCurrency}
           onClose={() => setSelectedRequestId(null)}
         />
       )}

@@ -29,11 +29,13 @@ export default function PaymentRequestDetailPanel({
   orderId,
   request,
   canEdit,
+  orderCurrency,
   onClose,
 }: {
   orderId: number
   request: PaymentRequest
   canEdit: boolean
+  orderCurrency: string
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -95,7 +97,7 @@ export default function PaymentRequestDetailPanel({
       'Товары:',
       ...request.items.map((item) => `  - ${item.product_name}: ${formatNumber(Number(item.amount))} ${request.currency}`),
       `Итого: ${formatNumber(Number(request.total_amount))} ${request.currency}`,
-      `Оплачено: ${formatNumber(Number(request.paid_amount))} ${request.currency}`,
+      `Оплачено: ${formatNumber(Number(request.paid_amount))} ${orderCurrency}`,
       `Остаток: ${formatNumber(Number(request.remaining_amount))} ${request.currency}`,
     ]
     try {
@@ -144,7 +146,7 @@ export default function PaymentRequestDetailPanel({
           ))}
           <div style={{ borderTop: '1px solid var(--color-border)', margin: '8px 0' }} />
           <SummaryRow label="Итого" value={`${formatNumber(Number(request.total_amount))} ${request.currency}`} />
-          <SummaryRow label="Оплачено" value={`${formatNumber(Number(request.paid_amount))} ${request.currency}`} />
+          <SummaryRow label="Оплачено" value={`${formatNumber(Number(request.paid_amount))} ${orderCurrency}`} />
           <SummaryRow label="Остаток" value={`${formatNumber(Number(request.remaining_amount))} ${request.currency}`} />
         </div>
 

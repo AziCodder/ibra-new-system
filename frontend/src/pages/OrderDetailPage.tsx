@@ -118,7 +118,7 @@ export default function OrderDetailPage() {
       </div>
 
       {activeTab === 'items' && <ProductsTable orderId={order.id} canEdit={canEdit} />}
-      {activeTab === 'payments' && <PaymentRequestsTab orderId={order.id} canEdit={canEdit} />}
+      {activeTab === 'payments' && <PaymentRequestsTab orderId={order.id} canEdit={canEdit} orderCurrency={order.currency} />}
       {activeTab === 'logistics' && <EmptyTabState label="Логистика" />}
       {activeTab === 'finance' && <EmptyTabState label="ДиР" />}
 
