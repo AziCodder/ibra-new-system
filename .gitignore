@@ -55,3 +55,6 @@ ChatExport_*/
 
 # Graphify output
 graphify-out/
+
+# Claude local settings (machine-specific)
+.claude/settings.local.json

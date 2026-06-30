@@ -3,34 +3,12 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
 import RequireAuth from './components/RequireAuth'
+import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
+import OrdersPage from './pages/OrdersPage'
 import DatabasePage from './pages/DatabasePage'
 
 const queryClient = new QueryClient()
-
-function Dashboard() {
-  return (
-    <div
-      className="flex items-center justify-center min-h-screen"
-      style={{ background: 'var(--color-bg)' }}
-    >
-      <div
-        className="rounded-2xl p-8 text-center"
-        style={{
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
-        }}
-      >
-        <h1 className="text-2xl font-bold mb-4" style={{ color: 'var(--color-text)' }}>
-          Ibra Order System
-        </h1>
-        <p className="text-sm" style={{ color: 'var(--color-muted)' }}>
-          Добро пожаловать! Панель управления будет здесь.
-        </p>
-      </div>
-    </div>
-  )
-}
 
 function App() {
   useEffect(() => {
@@ -48,7 +26,9 @@ function App() {
               path="/"
               element={
                 <RequireAuth>
-                  <Dashboard />
+                  <Layout>
+                    <OrdersPage />
+                  </Layout>
                 </RequireAuth>
               }
             />
@@ -56,7 +36,9 @@ function App() {
               path="/database"
               element={
                 <RequireAuth>
-                  <DatabasePage />
+                  <Layout>
+                    <DatabasePage />
+                  </Layout>
                 </RequireAuth>
               }
             />
