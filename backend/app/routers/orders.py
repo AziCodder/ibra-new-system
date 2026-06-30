@@ -26,6 +26,8 @@ def _to_order_out(order: Order, client_name: str, manager_name: str) -> OrderOut
         currency=order.currency,
         details=order.details,
         created_at=order.created_at,
+        profit_pct=order.profit_pct,
+        processing_days=order.processing_days,
     )
 
 

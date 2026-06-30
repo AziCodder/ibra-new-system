@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel
 
@@ -26,6 +27,8 @@ class OrderOut(BaseModel):
     currency: str
     details: str
     created_at: datetime
+    profit_pct: Decimal | None = None
+    processing_days: int | None = None
 
     model_config = {"from_attributes": True}
 

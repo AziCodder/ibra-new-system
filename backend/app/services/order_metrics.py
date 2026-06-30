@@ -5,15 +5,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.order import Order
-from app.services.profit import calculate_profit
+from app.services.profit import ProfitBreakdown, calculate_profit
 
 
-async def snapshot_order_metrics(order_id: int, session: AsyncSession) -> bool:
+async def snapshot_order_metrics(
+    order_id: int,
+    session: AsyncSession,
+    breakdown: ProfitBreakdown | None = None,
+) -> bool:
     """Compute and persist profit_pct and processing_days when the order is ready.
 
+    If `breakdown` is provided it is reused; otherwise calculate_profit is called.
     Returns True if metrics were written, False if the order is not ready yet.
     """
-    breakdown = await calculate_profit(order_id, session)
+    if breakdown is None:
+        breakdown = await calculate_profit(order_id, session)
     if not breakdown.is_ready:
         return False
 
