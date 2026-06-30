@@ -5,6 +5,7 @@ import { fetchOrder, type OrderStatus } from '../api/orders'
 import NotesSection from '../components/NotesSection'
 import ProductsTable from '../components/ProductsTable'
 import PaymentRequestsTab from '../components/PaymentRequestsTab'
+import LogisticsTab from '../components/LogisticsTab'
 import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: string }> = {
@@ -119,7 +120,9 @@ export default function OrderDetailPage() {
 
       {activeTab === 'items' && <ProductsTable orderId={order.id} canEdit={canEdit} />}
       {activeTab === 'payments' && <PaymentRequestsTab orderId={order.id} canEdit={canEdit} orderCurrency={order.currency} />}
-      {activeTab === 'logistics' && <EmptyTabState label="Логистика" />}
+      {activeTab === 'logistics' && (
+        <LogisticsTab orderId={order.id} orderNumber={order.number} canEdit={canEdit} isAdmin={user?.role === 'admin'} />
+      )}
       {activeTab === 'finance' && <EmptyTabState label="ДиР" />}
 
       <NotesSection orderId={order.id} />
