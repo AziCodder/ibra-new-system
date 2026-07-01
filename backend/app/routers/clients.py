@@ -35,6 +35,7 @@ async def create_client(
         full_name=body.full_name,
         description=body.description,
         telegram_group_link=body.telegram_group_link,
+        telegram_chat_id=body.telegram_chat_id,
     )
     session.add(client)
     await session.commit()
@@ -60,6 +61,8 @@ async def update_client(
         client.description = body.description
     if body.telegram_group_link is not None:
         client.telegram_group_link = body.telegram_group_link
+    if body.telegram_chat_id is not None:
+        client.telegram_chat_id = body.telegram_chat_id
 
     await session.commit()
     await session.refresh(client)

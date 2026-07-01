@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,11 +19,21 @@ from app.routers.products import router as products_router
 from app.routers.profit import router as profit_router
 from app.routers.suppliers import router as suppliers_router
 from app.routers.users import router as users_router
+from app.services.telegram_bot import close_bot
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Close the shared aiogram bot session cleanly on shutdown.
+    await close_bot()
+
 
 app = FastAPI(
     title="Ibra Order System",
     description="Система внутреннего учёта заказов",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
