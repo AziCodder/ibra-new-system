@@ -33,12 +33,16 @@ async def test_notify_schedules_background_delivery_when_bot_configured(monkeypa
     monkeypatch.setattr(telegram_bot, "get_bot", lambda: object())  # bot configured
     sender = AsyncMock(return_value=True)
     monkeypatch.setattr(telegram_bot, "send_message_with_retries", sender)
+    # Stub out persistence so this scheduling test stays isolated from the DB.
+    recorder = AsyncMock()
+    monkeypatch.setattr(notifications, "_record_delivery", recorder)
 
     notifications.notify("-100123", "hello")  # returns immediately, non-blocking
     # Drain the task scheduled onto the running loop.
     await asyncio.gather(*list(notifications._background_tasks))
 
     sender.assert_awaited_once_with("-100123", "hello")
+    recorder.assert_awaited_once()  # delivery outcome persisted (Итог 11.5)
 
 
 @pytest.mark.asyncio
