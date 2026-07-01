@@ -7,6 +7,7 @@ from app.routers.clients import router as clients_router
 from app.routers.files import router as files_router
 from app.routers.ledger_entries import router as ledger_entries_router
 from app.routers.logistics import router as logistics_router
+from app.routers.logistics_global import router as logistics_global_router
 from app.routers.notes import router as notes_router
 from app.routers.orders import router as orders_router
 from app.routers.payment_requests import router as payment_requests_router
@@ -37,6 +38,7 @@ app.include_router(clients_router)
 app.include_router(files_router)
 app.include_router(ledger_entries_router)
 app.include_router(logistics_router)
+app.include_router(logistics_global_router)
 app.include_router(notes_router)
 app.include_router(orders_router)
 app.include_router(payment_requests_router)

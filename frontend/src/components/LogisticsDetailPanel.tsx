@@ -98,6 +98,7 @@ export default function LogisticsDetailPanel({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
+      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
       setIsEditing(false)
     },
     onError: (err: Error) => setError(err.message),
@@ -107,6 +108,7 @@ export default function LogisticsDetailPanel({
     mutationFn: () => deleteLogistics(orderId, logistics.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
+      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
       onClose()
     },
     onError: (err: Error) => setError(err.message),
@@ -123,6 +125,7 @@ export default function LogisticsDetailPanel({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
+      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
       setIsAccepting(false)
     },
     onError: (err: Error) => setError(err.message),
@@ -130,7 +133,10 @@ export default function LogisticsDetailPanel({
 
   const unacceptMutation = useMutation({
     mutationFn: () => unacceptLogistics(orderId, logistics.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['logistics', orderId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
+      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
+    },
     onError: (err: Error) => setError(err.message),
   })
 

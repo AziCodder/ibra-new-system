@@ -11,6 +11,7 @@ const ROLE_LABELS: Record<string, string> = {
 const NAV_ITEMS = [
   { to: '/', icon: '📦', label: 'Заказы' },
   { to: '/payment-requests', icon: '💳', label: 'Оплаты' },
+  { to: '/logistics', icon: '🚚', label: 'Логистика' },
   { to: '/database', icon: '🗄️', label: 'База данных' },
 ]
 

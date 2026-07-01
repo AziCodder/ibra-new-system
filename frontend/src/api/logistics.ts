@@ -64,6 +64,30 @@ async function handle<T>(res: Response, fallback: string): Promise<T> {
   return res.json()
 }
 
+export interface LogisticsSummary extends Logistics {
+  order_number: string
+  client_name: string
+  manager_name: string
+  manager_id: number
+}
+
+export async function fetchAllLogistics(params?: {
+  status?: LogisticsStatus
+  client_id?: number
+  manager_id?: number
+  search?: string
+  sort?: 'asc' | 'desc'
+}): Promise<LogisticsSummary[]> {
+  const url = new URL('/api/logistics/', window.location.origin)
+  if (params?.status) url.searchParams.set('status', params.status)
+  if (params?.client_id != null) url.searchParams.set('client_id', String(params.client_id))
+  if (params?.manager_id != null) url.searchParams.set('manager_id', String(params.manager_id))
+  if (params?.search) url.searchParams.set('search', params.search)
+  if (params?.sort) url.searchParams.set('sort', params.sort)
+  const res = await fetch(url.toString(), { credentials: 'include' })
+  return handle(res, 'Failed to fetch logistics')
+}
+
 export async function fetchLogistics(orderId: number): Promise<Logistics[]> {
   const res = await fetch(`/api/orders/${orderId}/logistics/`, { credentials: 'include' })
   return handle(res, 'Failed to fetch logistics')
