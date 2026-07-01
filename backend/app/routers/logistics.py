@@ -324,12 +324,13 @@ async def notify_logistics_received(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """«Отправить уведомление о получении» — fires the notify() hook; Phase 11 wires the real Telegram send."""
+    """«Отправить уведомление о получении» — sends via notify() to the client's Telegram chat."""
     order = await _get_order_for_write(order_id, user, session)
     logistics = await _get_logistics_or_404(order_id, logistics_id, session)
 
     client = (await session.execute(select(Client).where(Client.id == order.client_id))).scalar_one()
+    # Send to the Telegram chat id (a t.me link cannot be a bot.send_message target).
     notify(
-        client.telegram_group_link,
+        client.telegram_chat_id,
         f"Товар по заказу {order.number} получен. Трекинг: {logistics.tracking or '—'}.",
     )

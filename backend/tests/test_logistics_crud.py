@@ -31,7 +31,7 @@ SHIP_DATE = datetime.now(UTC)
 
 async def _setup():
     async with async_session_factory() as session:
-        client = Client(code="TSTLGC", full_name="Logistics CRUD Client")
+        client = Client(code="TSTLGC", full_name="Logistics CRUD Client", telegram_chat_id="-1005550001")
         supplier = Supplier(name="Logistics CRUD Supplier")
         owner = User(login="lgc_owner", password_hash=hash_password("x"), role=UserRole.manager, full_name="Owner Manager")
         other = User(login="lgc_other", password_hash=hash_password("x"), role=UserRole.manager, full_name="Other Manager")
@@ -550,7 +550,7 @@ async def test_update_rejects_status_accepted_with_422():
 
 
 @pytest.mark.asyncio
-async def test_notify_received_calls_notify_with_client_group_and_tracking():
+async def test_notify_received_calls_notify_with_client_chat_and_tracking():
     client, supplier, owner, other, observer, admin, order, product = await _setup()
     try:
         async with async_session_factory() as session:
@@ -567,7 +567,8 @@ async def test_notify_received_calls_notify_with_client_group_and_tracking():
 
             mock_notify.assert_called_once()
             target, message = mock_notify.call_args[0]
-            assert target == client.telegram_group_link
+            # Delivered to the client's Telegram chat id, not the human-facing t.me link.
+            assert target == "-1005550001"
             assert order.number in message
             assert "M77-170566" in message
     finally:
