@@ -59,7 +59,10 @@ async def test_notify_without_bot_does_not_schedule(monkeypatch):
 async def _setup():
     async with async_session_factory() as session:
         client = Client(
-            code="TSTNOTIFY", full_name="Notify Test Client", telegram_group_link="https://t.me/notify-test-group"
+            code="TSTNOTIFY",
+            full_name="Notify Test Client",
+            telegram_group_link="https://t.me/notify-test-group",
+            telegram_chat_id="-1001234567890",
         )
         supplier = Supplier(name="Notify Test Supplier")
         owner = User(login="notify_owner", password_hash=hash_password("x"), role=UserRole.manager, full_name="Owner")
@@ -114,7 +117,7 @@ async def _cleanup(client_id: int, supplier_id: int, user_ids: list[int]):
 
 
 @pytest.mark.asyncio
-async def test_create_payment_request_calls_notify_with_client_group_and_order_details():
+async def test_create_payment_request_calls_notify_with_client_chat_and_order_details():
     client, supplier, owner, order, product = await _setup()
     try:
         async with async_session_factory() as session:
@@ -132,10 +135,12 @@ async def test_create_payment_request_calls_notify_with_client_group_and_order_d
 
             mock_notify.assert_called_once()
             target, message = mock_notify.call_args[0]
-            assert target == "https://t.me/notify-test-group"
+            # Delivered to the client's Telegram chat id, not the human-facing t.me link.
+            assert target == "-1001234567890"
             assert order.number in message
             assert "20.00" in message or "20" in message
             assert "bank details" in message
             assert "urgent purchase" in message
+            assert f"/orders/{order.id}" in message  # order link present
     finally:
         await _cleanup(client.id, supplier.id, [owner.id])

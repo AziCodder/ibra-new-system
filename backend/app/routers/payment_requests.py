@@ -154,8 +154,9 @@ async def create_payment_request(
     out = await _to_payment_request_out(request, session)
 
     client = (await session.execute(select(Client).where(Client.id == order.client_id))).scalar_one()
+    # Send to the Telegram chat id (a t.me link cannot be a bot.send_message target).
     notify(
-        client.telegram_group_link,
+        client.telegram_chat_id,
         f"По заказу {order.number} выставлен запрос на оплату на сумму {out.total_amount} {out.currency}. "
         f"Детали: {request.details or '—'}. Реквизиты: {request.requisites or '—'}. "
         f"Ссылка на заказ: /orders/{order.id}",
