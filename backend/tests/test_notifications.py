@@ -1,5 +1,6 @@
+import asyncio
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import delete, select
@@ -22,6 +23,37 @@ def test_notify_logs_message(caplog):
         notify("https://t.me/some-group", "test message")
     assert "https://t.me/some-group" in caplog.text
     assert "test message" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_notify_schedules_background_delivery_when_bot_configured(monkeypatch):
+    from app.services import notifications, telegram_bot
+
+    notifications._background_tasks.clear()
+    monkeypatch.setattr(telegram_bot, "get_bot", lambda: object())  # bot configured
+    sender = AsyncMock(return_value=True)
+    monkeypatch.setattr(telegram_bot, "send_message_with_retries", sender)
+
+    notifications.notify("-100123", "hello")  # returns immediately, non-blocking
+    # Drain the task scheduled onto the running loop.
+    await asyncio.gather(*list(notifications._background_tasks))
+
+    sender.assert_awaited_once_with("-100123", "hello")
+
+
+@pytest.mark.asyncio
+async def test_notify_without_bot_does_not_schedule(monkeypatch):
+    from app.services import notifications, telegram_bot
+
+    notifications._background_tasks.clear()
+    monkeypatch.setattr(telegram_bot, "get_bot", lambda: None)  # no bot configured
+    sender = AsyncMock()
+    monkeypatch.setattr(telegram_bot, "send_message_with_retries", sender)
+
+    notifications.notify("-100123", "hello")
+
+    sender.assert_not_awaited()
+    assert not notifications._background_tasks
 
 
 async def _setup():

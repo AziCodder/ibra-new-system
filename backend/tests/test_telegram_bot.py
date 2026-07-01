@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from aiogram.exceptions import TelegramNetworkError
 from sqlalchemy import delete, select
 
 from app.core.config import settings
@@ -77,6 +78,70 @@ async def test_lifespan_closes_bot_on_shutdown():
         async with lifespan(app):
             pass
         mock_close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_send_with_retries_succeeds_on_first_attempt(monkeypatch):
+    send = AsyncMock(return_value=True)
+    monkeypatch.setattr(telegram_bot, "send_message", send)
+
+    result = await telegram_bot.send_message_with_retries("123", "hi")
+
+    assert result is True
+    send.assert_awaited_once_with("123", "hi")
+
+
+@pytest.mark.asyncio
+async def test_send_with_retries_retries_then_succeeds(monkeypatch):
+    send = AsyncMock(side_effect=[TelegramNetworkError(method=None, message="boom"), True])
+    monkeypatch.setattr(telegram_bot, "send_message", send)
+    sleep = AsyncMock()
+    monkeypatch.setattr(telegram_bot.asyncio, "sleep", sleep)
+
+    result = await telegram_bot.send_message_with_retries("123", "hi", max_retries=3, delay=0)
+
+    assert result is True
+    assert send.await_count == 2
+    sleep.assert_awaited_once()  # one backoff between the two attempts
+
+
+@pytest.mark.asyncio
+async def test_send_with_retries_gives_up_after_max(monkeypatch):
+    send = AsyncMock(side_effect=TelegramNetworkError(method=None, message="boom"))
+    monkeypatch.setattr(telegram_bot, "send_message", send)
+    monkeypatch.setattr(telegram_bot.asyncio, "sleep", AsyncMock())
+
+    result = await telegram_bot.send_message_with_retries("123", "hi", max_retries=3, delay=0)
+
+    assert result is False
+    assert send.await_count == 3  # tried exactly max_retries times, no infinite loop
+
+
+@pytest.mark.asyncio
+async def test_send_with_retries_no_bot_does_not_retry(monkeypatch):
+    # send_message returns False (no token) — a permanent condition, must not retry.
+    send = AsyncMock(return_value=False)
+    monkeypatch.setattr(telegram_bot, "send_message", send)
+    sleep = AsyncMock()
+    monkeypatch.setattr(telegram_bot.asyncio, "sleep", sleep)
+
+    result = await telegram_bot.send_message_with_retries("123", "hi", max_retries=3, delay=0)
+
+    assert result is False
+    send.assert_awaited_once()  # single attempt only
+    sleep.assert_not_awaited()
+
+
+def test_queue_message_defers_delivery_to_background_tasks():
+    from fastapi import BackgroundTasks
+
+    bg = BackgroundTasks()
+    telegram_bot.queue_message(bg, "-100999", "later")
+
+    assert len(bg.tasks) == 1
+    task = bg.tasks[0]
+    assert task.func is telegram_bot.send_message_with_retries
+    assert task.args == ("-100999", "later")
 
 
 @pytest.mark.asyncio
