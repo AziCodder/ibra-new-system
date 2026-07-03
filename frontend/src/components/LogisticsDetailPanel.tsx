@@ -256,7 +256,7 @@ export default function LogisticsDetailPanel({
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Кол-во</span>
               <input
                 type="number"
-                min="0"
+                min="0.000001"
                 step="any"
                 value={editQuantity}
                 onChange={(e) => setEditQuantity(e.target.value)}
@@ -434,7 +434,7 @@ export default function LogisticsDetailPanel({
                 <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Сумма</span>
                 <input
                   type="number"
-                  min="0"
+                  min="0.000001"
                   step="any"
                   value={expenseAmount}
                   onChange={(e) => setExpenseAmount(e.target.value)}

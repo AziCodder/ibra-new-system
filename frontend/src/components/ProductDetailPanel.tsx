@@ -211,7 +211,7 @@ export default function ProductDetailPanel({
                 <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Количество</span>
                 <input
                   type="number"
-                  min="0"
+                  min="0.000001"
                   step="any"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}

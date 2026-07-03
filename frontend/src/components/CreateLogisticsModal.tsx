@@ -114,7 +114,7 @@ export default function CreateLogisticsModal({ orderId, onClose }: { orderId: nu
                   <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Кол-во</span>
                   <input
                     type="number"
-                    min="0"
+                    min="0.000001"
                     step="any"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}

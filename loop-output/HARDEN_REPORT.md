@@ -7,3 +7,4 @@
 | 3 | Пункт «База данных» виден менеджеру/наблюдателю | БАГ → OK | `[HARDEN] block observer note creation and hide admin nav` |
 | 4 | Длинные названия клиента/поставщика/товара (>255) | БАГ → OK | `[HARDEN] validate max_length on client supplier product names` |
 | 5 | Мобильная вёрстка 375px (формы БД, фильтры, панели) | БАГ → OK | `[HARDEN] responsive mobile layout for filters and forms` |
+| 6 | Нулевые суммы оплат/ДиР/логистики и нулевое кол-во товара | БАГ → OK | `[HARDEN] reject zero amounts in monetary and quantity fields` |

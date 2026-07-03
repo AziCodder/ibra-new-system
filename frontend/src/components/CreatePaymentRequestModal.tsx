@@ -146,7 +146,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
                   {selected[product.id] && (
                     <input
                       type="number"
-                      min="0"
+                      min="0.000001"
                       step="any"
                       value={amounts[product.id] ?? ''}
                       onChange={(e) => setAmounts((prev) => ({ ...prev, [product.id]: e.target.value }))}
