@@ -1,19 +1,36 @@
-# Production overlay — use with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Production stack — standalone (not an overlay).
+# Usage: copy .env.production.example → .env, then:
+#   docker compose -f docker-compose.prod.yml up -d --build
 
 services:
   db:
-    restart: always
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ibra_orders}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
+    restart: unless-stopped
     environment:
       APP_ENV: production
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    env_file:
-      - .env
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-ibra_orders}
+      SESSION_SECRET: ${SESSION_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost}
+      UPLOAD_DIR: /var/lib/ibra/uploads
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     volumes:
       - uploads:/var/lib/ibra/uploads
     depends_on:
@@ -24,8 +41,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
+    restart: unless-stopped
     ports:
-      - "80:80"
+      - "${HTTP_PORT:-8080}:80"
+    depends_on:
+      - backend
 
   backup:
     image: postgres:16-alpine
@@ -34,12 +54,14 @@ services:
       db:
         condition: service_healthy
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - ./backups:/backups
     entrypoint: >
-      sh -c 'pg_dump -h db -U ${POSTGRES_USER} -d ${POSTGRES_DB} --no-owner --no-privileges
+      sh -c 'pg_dump -h db -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ibra_orders}
+      --no-owner --no-privileges
       -f /backups/ibra_orders_$$(date -u +%Y%m%d_%H%M%S).sql'
 
 volumes:
+  pgdata:
   uploads:
