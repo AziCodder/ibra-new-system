@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.cookies import session_cookie_params
 from app.core.database import get_session
 from app.core.security import verify_password
 from app.models.user import User, UserRole
@@ -73,17 +74,15 @@ async def login(body: LoginRequest, response: Response, session: AsyncSession = 
     response.set_cookie(
         key=SESSION_COOKIE,
         value=token,
-        httponly=True,
-        samesite="lax",
         max_age=SESSION_MAX_AGE,
-        path="/",
+        **session_cookie_params(),
     )
     return user
 
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie(key=SESSION_COOKIE, path="/")
+    response.delete_cookie(key=SESSION_COOKIE, **session_cookie_params())
     return {"ok": True}
 
 

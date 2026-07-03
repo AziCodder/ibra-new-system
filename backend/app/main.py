@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.core.config import settings
 from app.routers.action_log import router as action_log_router
@@ -36,7 +38,14 @@ app = FastAPI(
     description="Система внутреннего учёта заказов",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
 )
+
+if settings.is_production:
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.trusted_hosts)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
 
 app.add_middleware(
     CORSMiddleware,
