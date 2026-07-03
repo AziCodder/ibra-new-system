@@ -66,6 +66,8 @@ async def test_snapshot_not_ready_returns_false():
             o = (await session.execute(select(Order).where(Order.id == order.id))).scalar_one()
         assert o.profit_pct is None
         assert o.processing_days is None
+        assert o.total_income is None
+        assert o.profit_amount is None
     finally:
         await _cleanup("TSTMTX0", ["mtx0_mgr"])
 
@@ -132,6 +134,8 @@ async def test_snapshot_ready_writes_metrics():
         assert o.profit_pct == Decimal("100.0000")
         assert o.processing_days is not None
         assert o.processing_days == (date.today() - order.created_at.date()).days
+        assert o.total_income == Decimal("1000.00")
+        assert o.profit_amount == Decimal("1000.00")
     finally:
         await _cleanup("TSTMTX1", ["mtx1_mgr", "mtx1_adm"])
 

@@ -27,8 +27,11 @@ class OrderOut(BaseModel):
     currency: str
     details: str
     created_at: datetime
+    completed_at: datetime | None = None
     profit_pct: Decimal | None = None
     processing_days: int | None = None
+    total_income: Decimal | None = None
+    profit_amount: Decimal | None = None
 
     model_config = {"from_attributes": True}
 

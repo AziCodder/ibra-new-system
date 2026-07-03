@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -12,6 +14,7 @@ from app.schemas.order import OrderCreate, OrderListOut, OrderOut, OrderUpdate
 from app.services.action_log import log_action
 from app.services.order_completion import check_can_complete
 from app.services.order_dependencies import count_order_dependencies
+from app.services.order_metrics import snapshot_order_metrics
 from app.services.order_number import generate_order_number
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
@@ -29,8 +32,11 @@ def _to_order_out(order: Order, client_name: str, manager_name: str) -> OrderOut
         currency=order.currency,
         details=order.details,
         created_at=order.created_at,
+        completed_at=order.completed_at,
         profit_pct=order.profit_pct,
         processing_days=order.processing_days,
+        total_income=order.total_income,
+        profit_amount=order.profit_amount,
     )
 
 
@@ -221,6 +227,12 @@ async def set_order_status(
         raise HTTPException(status_code=403, detail="Only admins can revert a completed order")
 
     order.status = target
+    if target == OrderStatus.completed:
+        order.completed_at = datetime.now(UTC)
+        await snapshot_order_metrics(order_id, session)
+    elif target == OrderStatus.in_progress and current == OrderStatus.completed:
+        order.completed_at = None
+
     await log_action(
         session, user, "order.status_changed", "order", order.id, f"{current.value}→{target.value}"
     )

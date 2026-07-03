@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -16,6 +16,13 @@ class OrderStatus(enum.StrEnum):
 
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (
+        Index("ix_orders_client_created", "client_id", "created_at"),
+        Index("ix_orders_client_status", "client_id", "status"),
+        Index("ix_orders_manager_created", "manager_id", "created_at"),
+        Index("ix_orders_status", "status"),
+        Index("ix_orders_completed_at", "completed_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
@@ -25,6 +32,9 @@ class Order(Base):
     currency: Mapped[str] = mapped_column(String(10), default="USD")
     details: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Snapshot fields — populated by snapshot_order_metrics() when is_ready
     profit_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
     processing_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_income: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    profit_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)

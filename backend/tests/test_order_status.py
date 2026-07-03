@@ -151,6 +151,11 @@ async def test_admin_can_complete_when_ready():
         async with async_session_factory() as session:
             out = await set_order_status(order.id, OrderStatusIn(status=OrderStatus.completed), admin, session)
         assert out.status == OrderStatus.completed
+        assert out.completed_at is not None
+
+        async with async_session_factory() as session:
+            o = (await session.execute(select(Order).where(Order.id == order.id))).scalar_one()
+        assert o.completed_at is not None
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
 
@@ -192,5 +197,22 @@ async def test_completed_cannot_become_cancelled():
             with pytest.raises(HTTPException) as exc_info:
                 await set_order_status(order.id, OrderStatusIn(status=OrderStatus.cancelled), admin, session)
         assert exc_info.value.status_code == 409
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_revert_completed_clears_completed_at():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        await _setup_ready_order(client, supplier, owner, admin, order, product)
+        async with async_session_factory() as session:
+            await set_order_status(order.id, OrderStatusIn(status=OrderStatus.completed), admin, session)
+        async with async_session_factory() as session:
+            await set_order_status(order.id, OrderStatusIn(status=OrderStatus.in_progress), admin, session)
+        async with async_session_factory() as session:
+            o = (await session.execute(select(Order).where(Order.id == order.id))).scalar_one()
+        assert o.status == OrderStatus.in_progress
+        assert o.completed_at is None
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
