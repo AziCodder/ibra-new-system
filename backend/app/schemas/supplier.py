@@ -1,14 +1,14 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SupplierCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=255)
     contacts: str = ""
     details: str = ""
 
 
 class SupplierUpdate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
     contacts: str | None = None
     details: str | None = None
 

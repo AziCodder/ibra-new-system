@@ -53,9 +53,9 @@ function UsersTab() {
       </div>
       {showForm && (
         <div className="grid grid-cols-4 gap-3 mb-4">
-          <input placeholder="Логин" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+          <input placeholder="Логин" maxLength={64} value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
-          <input placeholder="ФИО" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+          <input placeholder="ФИО" maxLength={255} value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.login || !form.password} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50" style={{ background: 'var(--color-success)', color: '#fff' }}>Создать</button>
         </div>
       )}
@@ -88,8 +88,8 @@ function ClientsTab() {
       </div>
       {showForm && (
         <div className="grid grid-cols-4 gap-3 mb-4">
-          <input placeholder="Код (M33)" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
-          <input placeholder="ФИО" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+          <input placeholder="Код (M33)" maxLength={20} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+          <input placeholder="ФИО" maxLength={255} value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="Описание" value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.code || !form.full_name} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50" style={{ background: 'var(--color-success)', color: '#fff' }}>Создать</button>
         </div>
@@ -123,7 +123,7 @@ function SuppliersTab() {
       </div>
       {showForm && (
         <div className="grid grid-cols-4 gap-3 mb-4">
-          <input placeholder="Название" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
+          <input placeholder="Название" maxLength={255} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="Контакты" value={form.contacts ?? ''} onChange={(e) => setForm({ ...form, contacts: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="Детали" value={form.details ?? ''} onChange={(e) => setForm({ ...form, details: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.name} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50" style={{ background: 'var(--color-success)', color: '#fff' }}>Создать</button>

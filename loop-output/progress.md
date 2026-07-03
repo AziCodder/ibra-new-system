@@ -1,12 +1,13 @@
 # Progress — Ibra Order System
 
 ## Текущая фаза: HARDEN+ANALYZE
-## Текущая задача: HARDEN — edge cases (итерация 3)
+## Текущая задача: HARDEN — адаптив (итерация 4)
 
 ## Выполненные задачи
 
 | Задача | Описание | Дата | Статус |
 |--------|----------|------|--------|
+| HARDEN.3 | Длинные названия: max_length в схемах client/supplier/product (422 вместо 500), maxLength в DatabasePage, 4 теста | 2026-07-03 22:29 | ✅ |
 | HARDEN.2 | Роли: наблюдатель не может создавать заметки (403 + скрыта форма); пункт «База данных» только для admin в сайдбаре | 2026-07-03 22:19 | ✅ |
 | HARDEN.1 | Отрицательные/нулевые курсы: `LogisticsCreate.exchange_rate` gt=0, UI min=0.000001, 6 тестов в `test_harden_validation.py` | 2026-07-03 22:00 | ✅ |
 | 0.1 | Структура репозитория (backend/, frontend/, docker-compose, .gitignore, README, docs) | 2026-06-29 19:45 | ✅ |

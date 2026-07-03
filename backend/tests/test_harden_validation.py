@@ -1,13 +1,16 @@
-"""HARDEN — edge-case validation (negative/zero exchange rates)."""
+"""HARDEN — edge-case validation."""
 
 from decimal import Decimal
 
 import pytest
 from pydantic import ValidationError
 
+from app.schemas.client import ClientCreate
 from app.schemas.ledger_entry import LedgerEntryCreate, LedgerEntryType
 from app.schemas.logistics import LogisticsAccept, LogisticsCreate
 from app.schemas.payment import PaymentCreate
+from app.schemas.product import ProductCreate
+from app.schemas.supplier import SupplierCreate
 
 
 def test_ledger_rejects_negative_exchange_rate():
@@ -69,3 +72,23 @@ def test_logistics_create_allows_null_exchange_rate():
         exchange_rate=None,
     )
     assert row.exchange_rate is None
+
+
+def test_client_rejects_code_over_db_limit():
+    with pytest.raises(ValidationError):
+        ClientCreate(code="x" * 21, full_name="Test Client")
+
+
+def test_client_rejects_full_name_over_db_limit():
+    with pytest.raises(ValidationError):
+        ClientCreate(code="M1", full_name="x" * 256)
+
+
+def test_supplier_rejects_name_over_db_limit():
+    with pytest.raises(ValidationError):
+        SupplierCreate(name="x" * 256)
+
+
+def test_product_rejects_name_over_db_limit():
+    with pytest.raises(ValidationError):
+        ProductCreate(supplier_id=1, name="x" * 256, quantity=Decimal("1"), price=Decimal("1"))
