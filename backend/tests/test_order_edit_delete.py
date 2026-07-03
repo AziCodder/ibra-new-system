@@ -5,12 +5,14 @@ from fastapi import HTTPException
 from sqlalchemy import delete, select
 
 from app.core.database import async_session_factory
+from app.core.security import hash_password
 from app.models.client import Client
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
-from app.routers.orders import delete_order
+from app.routers.orders import create_order, delete_order
+from app.schemas.order import OrderCreate
 from app.services.order_dependencies import count_order_dependencies
 
 
@@ -161,4 +163,36 @@ async def test_delete_order_blocked_when_products_exist():
         await _cleanup(client.id)
         async with async_session_factory() as session:
             await session.execute(delete(Supplier).where(Supplier.name == "Blocked Delete Supplier"))
+            await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_observer_cannot_create_order():
+    async with async_session_factory() as session:
+        client = Client(code="TSTOBSC", full_name="Observer Create Client")
+        observer = User(
+            login="obscreate_obs", password_hash=hash_password("x"),
+            role=UserRole.observer, full_name="Observer",
+        )
+        session.add_all([client, observer])
+        await session.commit()
+        await session.refresh(client)
+        await session.refresh(observer)
+        client_id, observer_id = client.id, observer.id
+    try:
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await create_order(
+                    OrderCreate(client_id=client_id, currency="USD", details=""), observer, session
+                )
+            assert exc_info.value.status_code == 403
+        # No order row was created for this client.
+        async with async_session_factory() as session:
+            leftover = await session.execute(select(Order).where(Order.client_id == client_id))
+            assert leftover.scalar_one_or_none() is None
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(delete(Order).where(Order.client_id == client_id))
+            await session.execute(delete(Client).where(Client.id == client_id))
+            await session.execute(delete(User).where(User.id == observer_id))
             await session.commit()

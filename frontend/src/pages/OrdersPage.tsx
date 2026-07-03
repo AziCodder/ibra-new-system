@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { fetchOrders, type OrderStatus } from '../api/orders'
 import { fetchClients } from '../api/clients'
 import CreateOrderModal from '../components/CreateOrderModal'
+import { useAuth } from '../contexts/AuthContext'
 
 const STATUS_CHIPS: { key: OrderStatus | 'all'; label: string }[] = [
   { key: 'in_progress', label: 'В работе' },
@@ -61,6 +62,8 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
   const pageSize = 12
+  const { user } = useAuth()
+  const canCreate = user?.role !== 'observer'
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
 
@@ -86,13 +89,15 @@ export default function OrdersPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>Заказы</h2>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer"
-          style={{ background: 'var(--color-primary)', color: '#fff' }}
-        >
-          + Создать заказ
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer"
+            style={{ background: 'var(--color-primary)', color: '#fff' }}
+          >
+            + Создать заказ
+          </button>
+        )}
       </div>
 
       {showCreate && <CreateOrderModal onClose={() => setShowCreate(false)} />}

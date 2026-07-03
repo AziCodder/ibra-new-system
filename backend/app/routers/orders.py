@@ -40,6 +40,9 @@ async def create_order(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    if user.role == UserRole.observer:
+        raise HTTPException(status_code=403, detail="Observers cannot create orders")
+
     client_result = await session.execute(select(Client).where(Client.id == body.client_id))
     client = client_result.scalar_one_or_none()
     if not client:
