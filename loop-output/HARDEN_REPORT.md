@@ -2,4 +2,4 @@
 
 | # | Проверка | Результат | Фикс (коммит) |
 |---|----------|-----------|---------------|
-| — | (ожидает прогона HARDEN) | — | — |
+| 1 | Отрицательный/нулевой курс обмена (ledger, payment, logistics) | БАГ → OK | `[HARDEN] reject negative exchange rates on logistics create + UI min` |

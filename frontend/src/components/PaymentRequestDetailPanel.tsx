@@ -235,7 +235,7 @@ export default function PaymentRequestDetailPanel({
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Курс (вручную)</span>
               <input
                 type="number"
-                min="0"
+                min="0.000001"
                 step="any"
                 value={exchangeRate}
                 onChange={(e) => setExchangeRate(e.target.value)}

@@ -17,7 +17,7 @@ class LogisticsCreate(BaseModel):
     received_date: datetime | None = None
     expense_amount: Decimal | None = None
     currency: str | None = None
-    exchange_rate: Decimal | None = None
+    exchange_rate: Decimal | None = Field(default=None, gt=0)
     acceptance_note: str | None = None
 
 
