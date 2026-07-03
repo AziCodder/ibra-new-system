@@ -120,7 +120,7 @@ export default function PaymentRequestsPage() {
 
       {!isLoading && requests && requests.length > 0 && (
         <div
-          className="rounded-2xl overflow-hidden"
+          className="rounded-2xl overflow-x-auto"
           style={{ border: '1px solid var(--color-border)' }}
         >
           <table className="w-full text-sm border-collapse">

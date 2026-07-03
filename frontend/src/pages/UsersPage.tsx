@@ -161,7 +161,7 @@ export default function UsersPage() {
         <p style={{ color: 'var(--color-muted)' }}>Загрузка...</p>
       ) : (
         <div
-          className="rounded-xl overflow-hidden"
+          className="rounded-xl overflow-x-auto"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
         >
           <table className="w-full">

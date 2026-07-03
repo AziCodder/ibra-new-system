@@ -49,12 +49,13 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         />
       )}
       <aside
-        className="flex flex-col fixed md:static inset-y-0 left-0 z-50 transition-transform md:translate-x-0"
+        className={`flex flex-col fixed md:static inset-y-0 left-0 z-50 transition-transform md:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
         style={{
           width: 248,
           background: 'var(--color-sidebar)',
           borderRight: '1px solid var(--color-border)',
-          transform: open ? 'translateX(0)' : undefined,
         }}
       >
         <div className="px-5 py-5">

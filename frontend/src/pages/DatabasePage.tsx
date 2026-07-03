@@ -135,7 +135,7 @@ function SuppliersTab() {
 
 function DataTable({ columns, rows }: { columns: string[]; rows: string[][] }) {
   return (
-    <div className="rounded-xl overflow-hidden" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+    <div className="rounded-xl overflow-x-auto" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
       <table className="w-full">
         <thead>
           <tr style={{ borderBottom: '1px solid var(--color-border)' }}>

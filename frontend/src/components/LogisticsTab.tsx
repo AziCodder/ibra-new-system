@@ -71,7 +71,7 @@ export default function LogisticsTab({
       )}
 
       {!isLoading && logisticsList && logisticsList.length > 0 && (
-        <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--color-border)' }}>
+        <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid var(--color-border)' }}>
           <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
