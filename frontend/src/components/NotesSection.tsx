@@ -84,6 +84,7 @@ export default function NotesSection({ orderId }: { orderId: number }) {
         ))}
       </div>
 
+      {user?.role !== 'observer' && (
       <div className="flex gap-2">
         <textarea
           value={text}
@@ -102,6 +103,7 @@ export default function NotesSection({ orderId }: { orderId: number }) {
           {mutation.isPending ? 'Сохранение...' : 'Добавить'}
         </button>
       </div>
+      )}
     </div>
   )
 }

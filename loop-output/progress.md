@@ -1,12 +1,13 @@
 # Progress — Ibra Order System
 
 ## Текущая фаза: HARDEN+ANALYZE
-## Текущая задача: HARDEN — роли (итерация 2)
+## Текущая задача: HARDEN — edge cases (итерация 3)
 
 ## Выполненные задачи
 
 | Задача | Описание | Дата | Статус |
 |--------|----------|------|--------|
+| HARDEN.2 | Роли: наблюдатель не может создавать заметки (403 + скрыта форма); пункт «База данных» только для admin в сайдбаре | 2026-07-03 22:19 | ✅ |
 | HARDEN.1 | Отрицательные/нулевые курсы: `LogisticsCreate.exchange_rate` gt=0, UI min=0.000001, 6 тестов в `test_harden_validation.py` | 2026-07-03 22:00 | ✅ |
 | 0.1 | Структура репозитория (backend/, frontend/, docker-compose, .gitignore, README, docs) | 2026-06-29 19:45 | ✅ |
 | 0.2 | PostgreSQL в Docker (healthcheck, pg_isready + psql подключение проверено) | 2026-06-29 19:51 | ✅ |

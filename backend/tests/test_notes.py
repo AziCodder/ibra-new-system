@@ -97,3 +97,35 @@ async def test_manager_cannot_view_or_add_notes_on_other_managers_order():
             assert exc_info.value.status_code == 404
     finally:
         await _cleanup(client.id, [owner.id, other.id])
+
+
+@pytest.mark.asyncio
+async def test_observer_can_read_but_cannot_create_notes():
+    client, owner, other, order = await _setup_order_with_managers()
+    try:
+        async with async_session_factory() as session:
+            observer = User(login="notes_observer", password_hash=hash_password("x"), role=UserRole.observer, full_name="Observer")
+            session.add(observer)
+            await session.commit()
+            await session.refresh(observer)
+            observer_id = observer.id
+
+        async with async_session_factory() as session:
+            await create_note(order.id, NoteCreate(text="existing"), owner, session)
+
+        async with async_session_factory() as session:
+            observer = await session.get(User, observer_id)
+            notes = await list_notes(order.id, observer, session)
+            assert len(notes) == 1
+            assert notes[0].text == "existing"
+
+        async with async_session_factory() as session:
+            observer = await session.get(User, observer_id)
+            with pytest.raises(HTTPException) as exc_info:
+                await create_note(order.id, NoteCreate(text="blocked"), observer, session)
+            assert exc_info.value.status_code == 403
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(delete(User).where(User.login == "notes_observer"))
+            await session.commit()
+        await _cleanup(client.id, [owner.id, other.id])

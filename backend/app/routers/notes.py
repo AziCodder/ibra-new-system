@@ -22,6 +22,12 @@ async def _get_visible_order(order_id: int, user: User, session: AsyncSession) -
     return order
 
 
+async def _get_order_for_write(order_id: int, user: User, session: AsyncSession) -> Order:
+    if user.role == UserRole.observer:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return await _get_visible_order(order_id, user, session)
+
+
 @router.get("/", response_model=list[NoteOut])
 async def list_notes(
     order_id: int,
@@ -56,7 +62,7 @@ async def create_note(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    await _get_visible_order(order_id, user, session)
+    await _get_order_for_write(order_id, user, session)
 
     note = Note(order_id=order_id, author_id=user.id, text=body.text)
     session.add(note)

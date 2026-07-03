@@ -8,11 +8,11 @@ const ROLE_LABELS: Record<string, string> = {
   observer: 'Наблюдатель',
 }
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { to: string; icon: string; label: string; adminOnly?: boolean }[] = [
   { to: '/', icon: '📦', label: 'Заказы' },
   { to: '/payment-requests', icon: '💳', label: 'Оплаты' },
   { to: '/logistics', icon: '🚚', label: 'Логистика' },
-  { to: '/database', icon: '🗄️', label: 'База данных' },
+  { to: '/database', icon: '🗄️', label: 'База данных', adminOnly: true },
 ]
 
 function ThemeToggle() {
@@ -65,7 +65,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
 
         <nav className="flex-1 px-3 flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
