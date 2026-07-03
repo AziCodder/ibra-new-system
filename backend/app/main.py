@@ -2,10 +2,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.core.config import settings
+from app.core.health import build_health_payload
+from app.core.logging_config import setup_logging
+from app.middleware.request_logging import RequestLoggingMiddleware, unhandled_exception_handler
 from app.routers.action_log import router as action_log_router
 from app.routers.auth import router as auth_router
 from app.routers.clients import router as clients_router
@@ -28,6 +32,7 @@ from app.services.telegram_bot import close_bot
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_logging(production=settings.is_production)
     yield
     # Close the shared aiogram bot session cleanly on shutdown.
     await close_bot()
@@ -47,6 +52,7 @@ if settings.is_production:
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.trusted_hosts)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
 
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -74,10 +80,24 @@ app.include_router(profit_router)
 app.include_router(suppliers_router)
 app.include_router(users_router)
 
+app.add_exception_handler(Exception, unhandled_exception_handler)
+
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "db_configured": bool(settings.database_url),
-    }
+    return await build_health_payload(deep=False)
+
+
+@app.get("/health/live")
+async def health_live():
+    """Liveness — process is up."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready")
+async def health_ready():
+    """Readiness — DB reachable (for uptime monitors / orchestrators)."""
+    payload = await build_health_payload(deep=True)
+    if payload.get("db") != "ok":
+        return JSONResponse(status_code=503, content=payload)
+    return payload
