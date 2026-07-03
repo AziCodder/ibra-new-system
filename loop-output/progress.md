@@ -1,12 +1,13 @@
 # Progress — Ibra Order System
 
-## Текущая фаза: HARDEN+ANALYZE
-## Текущая задача: HARDEN — финализация (итерация 6)
+## Текущая фаза: завершено
+## Текущая задача: —
 
 ## Выполненные задачи
 
 | Задача | Описание | Дата | Статус |
 |--------|----------|------|--------|
+| HARDEN.6 | Финализация: полный прогон тестов (184 passed), tsc/eslint, HARDEN_REPORT + FINAL_REPORT → ГОТОВО | 2026-07-03 22:59 | ✅ |
 | HARDEN.5 | Нулевые суммы/количества: min=0.000001 в UI для amount/qty, 5 новых тестов в test_harden_validation.py | 2026-07-03 22:48 | ✅ |
 | HARDEN.4 | Адаптив 375px: responsive grids в DatabasePage, full-width фильтры на Logistics/PaymentRequests, p-4 sm:p-6, grid-cols-1 sm:grid-cols-2 в панелях оплат | 2026-07-03 22:38 | ✅ |
 | HARDEN.3 | Длинные названия: max_length в схемах client/supplier/product (422 вместо 500), maxLength в DatabasePage, 4 теста | 2026-07-03 22:29 | ✅ |
