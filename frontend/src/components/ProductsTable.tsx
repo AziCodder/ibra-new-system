@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchProducts } from '../api/products'
 import AddProductModal from './AddProductModal'
 import ProductDetailPanel from './ProductDetailPanel'
+import ErrorState from './ErrorState'
+import Skeleton from './Skeleton'
 
 function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
@@ -12,7 +14,7 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
 
-  const { data: products, isLoading } = useQuery({
+  const { data: products, isLoading, isError, refetch } = useQuery({
     queryKey: ['products', orderId],
     queryFn: () => fetchProducts(orderId),
   })
@@ -44,9 +46,19 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
         </div>
       )}
 
-      {isLoading && <div style={{ color: 'var(--color-muted)' }}>Загрузка...</div>}
+      {isLoading && (
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} height={48} radius={10} />
+          ))}
+        </div>
+      )}
 
-      {!isLoading && (!products || products.length === 0) && (
+      {!isLoading && isError && (
+        <ErrorState message="Не удалось загрузить товары" onRetry={() => refetch()} />
+      )}
+
+      {!isLoading && !isError && (!products || products.length === 0) && (
         <div
           className="rounded-2xl p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}

@@ -4,6 +4,8 @@ import { fetchClients, createClient, type ClientCreate } from '../api/clients'
 import { fetchSuppliers, createSupplier, type SupplierCreate } from '../api/suppliers'
 import { fetchUsers, createUser, type UserCreate } from '../api/users'
 import { useAuth } from '../contexts/AuthContext'
+import ErrorState from '../components/ErrorState'
+import { SkeletonTableRows } from '../components/Skeleton'
 
 type Tab = 'users' | 'clients' | 'suppliers'
 
@@ -38,7 +40,7 @@ function UsersTab() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<UserCreate>({ login: '', password: '', role: 'manager', full_name: '' })
-  const { data: users, isLoading } = useQuery({ queryKey: ['users'], queryFn: fetchUsers })
+  const { data: users, isLoading, isError, refetch } = useQuery({ queryKey: ['users'], queryFn: fetchUsers })
   const mutation = useMutation({
     mutationFn: () => createUser(form),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setShowForm(false); setForm({ login: '', password: '', role: 'manager', full_name: '' }) },
@@ -57,7 +59,9 @@ function UsersTab() {
           <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.login || !form.password} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50" style={{ background: 'var(--color-success)', color: '#fff' }}>Создать</button>
         </div>
       )}
-      {isLoading ? <p style={{ color: 'var(--color-muted)' }}>Загрузка...</p> : (
+      {isLoading ? <SkeletonTableRows rows={5} /> : isError ? (
+        <ErrorState message="Не удалось загрузить пользователей" onRetry={() => refetch()} />
+      ) : (
         <DataTable
           columns={['Логин', 'ФИО', 'Роль', 'Статус']}
           rows={users?.map((u) => [u.login, u.full_name || '—', u.role, u.is_active ? 'Активен' : 'Отключён']) ?? []}
@@ -71,7 +75,7 @@ function ClientsTab() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<ClientCreate>({ code: '', full_name: '' })
-  const { data: clients, isLoading } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
+  const { data: clients, isLoading, isError, refetch } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
   const mutation = useMutation({
     mutationFn: () => createClient(form),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['clients'] }); setShowForm(false); setForm({ code: '', full_name: '' }) },
@@ -90,7 +94,9 @@ function ClientsTab() {
           <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.code || !form.full_name} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50" style={{ background: 'var(--color-success)', color: '#fff' }}>Создать</button>
         </div>
       )}
-      {isLoading ? <p style={{ color: 'var(--color-muted)' }}>Загрузка...</p> : (
+      {isLoading ? <SkeletonTableRows rows={5} /> : isError ? (
+        <ErrorState message="Не удалось загрузить клиентов" onRetry={() => refetch()} />
+      ) : (
         <DataTable
           columns={['Код', 'ФИО', 'Описание', 'TG группа']}
           rows={clients?.map((c) => [c.code, c.full_name, c.description || '—', c.telegram_group_link || '—']) ?? []}
@@ -104,7 +110,7 @@ function SuppliersTab() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<SupplierCreate>({ name: '' })
-  const { data: suppliers, isLoading } = useQuery({ queryKey: ['suppliers'], queryFn: fetchSuppliers })
+  const { data: suppliers, isLoading, isError, refetch } = useQuery({ queryKey: ['suppliers'], queryFn: fetchSuppliers })
   const mutation = useMutation({
     mutationFn: () => createSupplier(form),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['suppliers'] }); setShowForm(false); setForm({ name: '' }) },
@@ -123,7 +129,9 @@ function SuppliersTab() {
           <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !form.name} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50" style={{ background: 'var(--color-success)', color: '#fff' }}>Создать</button>
         </div>
       )}
-      {isLoading ? <p style={{ color: 'var(--color-muted)' }}>Загрузка...</p> : (
+      {isLoading ? <SkeletonTableRows rows={5} /> : isError ? (
+        <ErrorState message="Не удалось загрузить поставщиков" onRetry={() => refetch()} />
+      ) : (
         <DataTable
           columns={['Название', 'Контакты', 'Детали']}
           rows={suppliers?.map((s) => [s.name, s.contacts || '—', s.details || '—']) ?? []}

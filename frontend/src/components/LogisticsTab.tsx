@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchLogistics, type LogisticsStatus } from '../api/logistics'
 import CreateLogisticsModal from './CreateLogisticsModal'
 import LogisticsDetailPanel from './LogisticsDetailPanel'
+import ErrorState from './ErrorState'
+import Skeleton from './Skeleton'
 
 const STATUS_LABELS: Record<LogisticsStatus, string> = {
   in_transit: 'В дороге',
@@ -38,7 +40,7 @@ export default function LogisticsTab({
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
-  const { data: logisticsList, isLoading } = useQuery({
+  const { data: logisticsList, isLoading, isError, refetch } = useQuery({
     queryKey: ['logistics', orderId],
     queryFn: () => fetchLogistics(orderId),
   })
@@ -59,9 +61,19 @@ export default function LogisticsTab({
         </div>
       )}
 
-      {isLoading && <div style={{ color: 'var(--color-muted)' }}>Загрузка...</div>}
+      {isLoading && (
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} height={48} radius={10} />
+          ))}
+        </div>
+      )}
 
-      {!isLoading && (!logisticsList || logisticsList.length === 0) && (
+      {!isLoading && isError && (
+        <ErrorState message="Не удалось загрузить логистику" onRetry={() => refetch()} />
+      )}
+
+      {!isLoading && !isError && (!logisticsList || logisticsList.length === 0) && (
         <div
           className="rounded-2xl p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
@@ -70,7 +82,7 @@ export default function LogisticsTab({
         </div>
       )}
 
-      {!isLoading && logisticsList && logisticsList.length > 0 && (
+      {!isLoading && !isError && logisticsList && logisticsList.length > 0 && (
         <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid var(--color-border)' }}>
           <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>

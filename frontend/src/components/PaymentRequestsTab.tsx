@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchPaymentRequests, type PaymentRequestPriority } from '../api/paymentRequests'
 import CreatePaymentRequestModal from './CreatePaymentRequestModal'
 import PaymentRequestDetailPanel from './PaymentRequestDetailPanel'
+import ErrorState from './ErrorState'
+import Skeleton from './Skeleton'
 
 const PRIORITY_BADGE: Record<PaymentRequestPriority, { label: string; bg: string; color: string }> = {
   low: { label: 'Низкий', bg: 'var(--color-surface-3)', color: 'var(--color-muted)' },
@@ -26,7 +28,7 @@ export default function PaymentRequestsTab({
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null)
 
-  const { data: requests, isLoading } = useQuery({
+  const { data: requests, isLoading, isError, refetch } = useQuery({
     queryKey: ['payment-requests', orderId],
     queryFn: () => fetchPaymentRequests(orderId),
   })
@@ -47,9 +49,19 @@ export default function PaymentRequestsTab({
         </div>
       )}
 
-      {isLoading && <div style={{ color: 'var(--color-muted)' }}>Загрузка...</div>}
+      {isLoading && (
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} height={140} radius={16} />
+          ))}
+        </div>
+      )}
 
-      {!isLoading && (!requests || requests.length === 0) && (
+      {!isLoading && isError && (
+        <ErrorState message="Не удалось загрузить запросы на оплату" onRetry={() => refetch()} />
+      )}
+
+      {!isLoading && !isError && (!requests || requests.length === 0) && (
         <div
           className="rounded-2xl p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
@@ -58,7 +70,7 @@ export default function PaymentRequestsTab({
         </div>
       )}
 
-      {!isLoading && requests && requests.length > 0 && (
+      {!isLoading && !isError && requests && requests.length > 0 && (
         <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
           {requests.map((request) => {
             const badge = PRIORITY_BADGE[request.priority]

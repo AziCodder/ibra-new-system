@@ -1,20 +1,42 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchNotes, createNote } from '../api/notes'
+import { fetchNotes, createNote, type Note } from '../api/notes'
+import ErrorState from './ErrorState'
+import Skeleton from './Skeleton'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function NotesSection({ orderId }: { orderId: number }) {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
   const [text, setText] = useState('')
 
-  const { data: notes, isLoading } = useQuery({
+  const { data: notes, isLoading, isError, refetch } = useQuery({
     queryKey: ['notes', orderId],
     queryFn: () => fetchNotes(orderId),
   })
 
   const mutation = useMutation({
     mutationFn: () => createNote(orderId, text.trim()),
-    onSuccess: () => {
+    onMutate: async () => {
+      const trimmed = text.trim()
+      await queryClient.cancelQueries({ queryKey: ['notes', orderId] })
+      const previous = queryClient.getQueryData<Note[]>(['notes', orderId])
+      const optimistic: Note = {
+        id: -Date.now(),
+        order_id: orderId,
+        author_id: user?.id ?? 0,
+        author_name: user?.full_name || user?.login || 'Вы',
+        text: trimmed,
+        created_at: new Date().toISOString(),
+      }
+      queryClient.setQueryData<Note[]>(['notes', orderId], (old) => [...(old ?? []), optimistic])
       setText('')
+      return { previous }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(['notes', orderId], ctx.previous)
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['notes', orderId] })
     },
   })
@@ -26,9 +48,19 @@ export default function NotesSection({ orderId }: { orderId: number }) {
       </h3>
 
       <div className="flex flex-col gap-3 mb-4">
-        {isLoading && <div style={{ color: 'var(--color-muted)' }}>Загрузка...</div>}
+        {isLoading && (
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} height={72} radius={12} />
+            ))}
+          </div>
+        )}
 
-        {!isLoading && notes?.length === 0 && (
+        {!isLoading && isError && (
+          <ErrorState message="Не удалось загрузить заметки" onRetry={() => refetch()} />
+        )}
+
+        {!isLoading && !isError && notes?.length === 0 && (
           <div
             className="rounded-xl p-4 text-sm"
             style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}

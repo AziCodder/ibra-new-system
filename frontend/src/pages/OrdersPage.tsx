@@ -5,6 +5,8 @@ import { fetchOrders, type OrderStatus } from '../api/orders'
 import { fetchClients } from '../api/clients'
 import CreateOrderModal from '../components/CreateOrderModal'
 import { useAuth } from '../contexts/AuthContext'
+import { SkeletonCardGrid } from '../components/Skeleton'
+import ErrorState from '../components/ErrorState'
 
 const STATUS_CHIPS: { key: OrderStatus | 'all'; label: string }[] = [
   { key: 'in_progress', label: 'В работе' },
@@ -67,7 +69,7 @@ export default function OrdersPage() {
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['orders', statusFilter, clientId, page],
     queryFn: () =>
       fetchOrders({
@@ -140,7 +142,9 @@ export default function OrdersPage() {
       </div>
 
       {isLoading ? (
-        <p style={{ color: 'var(--color-muted)' }}>Загрузка...</p>
+        <SkeletonCardGrid />
+      ) : isError ? (
+        <ErrorState message="Не удалось загрузить заказы" onRetry={() => refetch()} />
       ) : !data || data.items.length === 0 ? (
         <div
           className="rounded-2xl p-12 text-center"

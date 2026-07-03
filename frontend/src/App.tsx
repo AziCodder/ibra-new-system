@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
+import { ToastProvider, toast } from './components/Toast'
 import RequireAuth from './components/RequireAuth'
 import Layout from './components/Layout'
 import LoginPage from './pages/LoginPage'
@@ -11,7 +12,16 @@ import DatabasePage from './pages/DatabasePage'
 import PaymentRequestsPage from './pages/PaymentRequestsPage'
 import LogisticsPage from './pages/LogisticsPage'
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    mutations: {
+      onError: (error) => {
+        const msg = error instanceof Error ? error.message : 'Операция не выполнена'
+        toast(msg, 'error')
+      },
+    },
+  },
+})
 
 function App() {
   useEffect(() => {
@@ -21,8 +31,9 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
+      <ToastProvider>
+        <AuthProvider>
+          <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route
@@ -77,8 +88,9 @@ function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+          </BrowserRouter>
+        </AuthProvider>
+      </ToastProvider>
     </QueryClientProvider>
   )
 }

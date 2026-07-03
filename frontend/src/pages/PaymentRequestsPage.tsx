@@ -10,6 +10,9 @@ import { fetchClients } from '../api/clients'
 import { fetchUsers } from '../api/users'
 import { useAuth } from '../contexts/AuthContext'
 import PaymentRequestDetailPanel from '../components/PaymentRequestDetailPanel'
+import ErrorState from '../components/ErrorState'
+import Skeleton from '../components/Skeleton'
+
 const PRIORITY_LABELS: Record<PaymentRequestPriority, string> = {
   low: 'Низкий',
   normal: 'Обычно',
@@ -35,7 +38,7 @@ export default function PaymentRequestsPage() {
   const [sort, setSort] = useState<'asc' | 'desc'>('desc')
   const [selected, setSelected] = useState<PaymentRequestSummary | null>(null)
 
-  const { data: requests, isLoading } = useQuery({
+  const { data: requests, isLoading, isError, refetch } = useQuery({
     queryKey: ['all-payment-requests', clientId, managerId, sort],
     queryFn: () => fetchAllPaymentRequests({ client_id: clientId, manager_id: managerId, sort }),
   })
@@ -105,10 +108,18 @@ export default function PaymentRequestsPage() {
       </div>
 
       {isLoading && (
-        <div className="text-sm" style={{ color: 'var(--color-muted)' }}>Загрузка...</div>
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} height={72} radius={14} />
+          ))}
+        </div>
       )}
 
-      {!isLoading && (!requests || requests.length === 0) && (
+      {!isLoading && isError && (
+        <ErrorState message="Не удалось загрузить запросы на оплату" onRetry={() => refetch()} />
+      )}
+
+      {!isLoading && !isError && (!requests || requests.length === 0) && (
         <div
           className="rounded-2xl p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}

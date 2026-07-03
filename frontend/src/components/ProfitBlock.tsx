@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchOrderProfit } from '../api/profit'
+import { SkeletonMetricRow } from './Skeleton'
+import ErrorState from './ErrorState'
 
 function fmtAmount(val: string, currency: string) {
   const n = parseFloat(val)
@@ -49,7 +51,7 @@ function Op({ children }: { children: string }) {
 }
 
 export default function ProfitBlock({ orderId }: { orderId: number }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['profit', orderId],
     queryFn: () => fetchOrderProfit(orderId),
     staleTime: 60_000,
@@ -65,11 +67,13 @@ export default function ProfitBlock({ orderId }: { orderId: number }) {
         marginBottom: '20px',
       }}
     >
-      {isLoading && (
-        <span style={{ fontSize: 13, color: 'var(--color-faint)' }}>Загрузка итогов…</span>
+      {isLoading && <SkeletonMetricRow />}
+
+      {!isLoading && isError && (
+        <ErrorState message="Не удалось загрузить итоги" onRetry={() => refetch()} />
       )}
 
-      {data && !data.is_ready && (
+      {!isLoading && !isError && data && !data.is_ready && (
         <div
           style={{
             display: 'flex',
@@ -87,7 +91,7 @@ export default function ProfitBlock({ orderId }: { orderId: number }) {
         </div>
       )}
 
-      {data && data.is_ready && (
+      {!isLoading && !isError && data && data.is_ready && (
         <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
             <MetricCard label="Доходы" value={data.income} currency={data.currency} />

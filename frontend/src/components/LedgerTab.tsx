@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchLedgerEntries, type LedgerEntryType } from '../api/ledgerEntries'
 import CreateLedgerEntryModal from './CreateLedgerEntryModal'
 import LedgerEntryDetailPanel from './LedgerEntryDetailPanel'
+import ErrorState from './ErrorState'
+import Skeleton from './Skeleton'
 
 const TYPE_LABELS: Record<LedgerEntryType, string> = {
   income: 'Доход',
@@ -34,7 +36,7 @@ export default function LedgerTab({
   const [createType, setCreateType] = useState<LedgerEntryType | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
-  const { data: entries, isLoading } = useQuery({
+  const { data: entries, isLoading, isError, refetch } = useQuery({
     queryKey: ['ledger-entries', orderId],
     queryFn: () => fetchLedgerEntries(orderId),
   })
@@ -73,9 +75,19 @@ export default function LedgerTab({
         </div>
       )}
 
-      {isLoading && <div style={{ color: 'var(--color-muted)' }}>Загрузка...</div>}
+      {isLoading && (
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} height={48} radius={10} />
+          ))}
+        </div>
+      )}
 
-      {!isLoading && (!entries || entries.length === 0) && (
+      {!isLoading && isError && (
+        <ErrorState message="Не удалось загрузить записи ДиР" onRetry={() => refetch()} />
+      )}
+
+      {!isLoading && !isError && (!entries || entries.length === 0) && (
         <div
           className="rounded-2xl p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
@@ -84,7 +96,7 @@ export default function LedgerTab({
         </div>
       )}
 
-      {!isLoading && entries && entries.length > 0 && (
+      {!isLoading && !isError && entries && entries.length > 0 && (
         <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid var(--color-border)' }}>
           <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>

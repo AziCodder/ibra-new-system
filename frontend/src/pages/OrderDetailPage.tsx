@@ -9,6 +9,8 @@ import LogisticsTab from '../components/LogisticsTab'
 import LedgerTab from '../components/LedgerTab'
 import { useAuth } from '../contexts/AuthContext'
 import ProfitBlock from '../components/ProfitBlock'
+import Skeleton from '../components/Skeleton'
+import ErrorState from '../components/ErrorState'
 
 const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: string }> = {
   in_progress: { label: 'В работе', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
@@ -33,7 +35,7 @@ export default function OrderDetailPage() {
   const [activeTab, setActiveTab] = useState<TabKey>('items')
   const queryClient = useQueryClient()
 
-  const { data: order, isLoading, isError } = useQuery({
+  const { data: order, isLoading, isError, refetch } = useQuery({
     queryKey: ['order', orderId],
     queryFn: () => fetchOrder(orderId),
     enabled: !Number.isNaN(orderId),
@@ -41,19 +43,45 @@ export default function OrderDetailPage() {
 
   const statusMutation = useMutation({
     mutationFn: (status: OrderStatus) => setOrderStatus(orderId, status),
+    onMutate: async (status) => {
+      await queryClient.cancelQueries({ queryKey: ['order', orderId] })
+      const previous = queryClient.getQueryData<Awaited<ReturnType<typeof fetchOrder>>>(['order', orderId])
+      if (previous) {
+        queryClient.setQueryData(['order', orderId], { ...previous, status })
+      }
+      return { previous }
+    },
+    onError: (_err, _status, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(['order', orderId], ctx.previous)
+    },
     onSuccess: (updated) => {
       queryClient.setQueryData(['order', orderId], updated)
     },
   })
 
   if (isLoading) {
-    return <div className="p-6" style={{ color: 'var(--color-muted)' }}>Загрузка...</div>
+    return (
+      <div className="p-6 flex flex-col gap-4">
+        <Skeleton width={140} height={14} />
+        <Skeleton width="60%" height={28} />
+        <Skeleton width="45%" height={14} />
+        <div className="flex gap-3 mt-2">
+          <Skeleton width={90} height={32} />
+          <Skeleton width={90} height={32} />
+          <Skeleton width={90} height={32} />
+        </div>
+        <Skeleton width="100%" height={180} radius={14} style={{ marginTop: 12 }} />
+      </div>
+    )
   }
 
   if (isError || !order) {
     return (
       <div className="p-6">
-        <p style={{ color: 'var(--color-danger)' }}>Заказ не найден</p>
+        <ErrorState
+          message={isError ? 'Не удалось загрузить заказ' : 'Заказ не найден'}
+          onRetry={isError ? () => refetch() : undefined}
+        />
         <button onClick={() => navigate('/')} className="mt-3 text-sm cursor-pointer" style={{ color: 'var(--color-primary)' }}>
           ← Назад к заказам
         </button>
@@ -96,7 +124,6 @@ export default function OrderDetailPage() {
         const isAdmin = user.role === 'admin'
         const isOwner = user.role === 'manager' && user.id === order.manager_id
         const busy = statusMutation.isPending
-        const err = statusMutation.error as Error | null
         const actions: { label: string; status: OrderStatus; style: 'danger' | 'success' | 'ghost' }[] = []
 
         if (order.status === 'in_progress') {
@@ -128,7 +155,6 @@ export default function OrderDetailPage() {
                 {a.label}
               </button>
             ))}
-            {err && <span style={{ fontSize: 12, color: 'var(--color-danger)' }}>{err.message}</span>}
           </div>
         )
       })()}

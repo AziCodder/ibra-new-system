@@ -6,6 +6,8 @@ import { fetchClients } from '../api/clients'
 import { fetchUsers } from '../api/users'
 import { useAuth } from '../contexts/AuthContext'
 import LogisticsDetailPanel from '../components/LogisticsDetailPanel'
+import ErrorState from '../components/ErrorState'
+import Skeleton from '../components/Skeleton'
 
 const STATUS_LABEL: Record<LogisticsStatus, string> = {
   in_transit: 'В пути',
@@ -42,7 +44,7 @@ export default function LogisticsPage() {
     sort,
   }
 
-  const { data: items, isLoading } = useQuery({
+  const { data: items, isLoading, isError, refetch } = useQuery({
     queryKey: ['all-logistics', filters],
     queryFn: () => fetchAllLogistics(filters),
   })
@@ -141,10 +143,18 @@ export default function LogisticsPage() {
       </div>
 
       {isLoading && (
-        <div className="text-sm" style={{ color: 'var(--color-muted)' }}>Загрузка...</div>
+        <div className="flex flex-col gap-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} height={44} radius={10} />
+          ))}
+        </div>
       )}
 
-      {!isLoading && (!items || items.length === 0) && (
+      {!isLoading && isError && (
+        <ErrorState message="Не удалось загрузить логистику" onRetry={() => refetch()} />
+      )}
+
+      {!isLoading && !isError && (!items || items.length === 0) && (
         <div
           className="rounded-2xl p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
