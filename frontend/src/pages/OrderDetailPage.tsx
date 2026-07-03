@@ -77,7 +77,7 @@ export default function OrderDetailPage() {
 
   if (isError || !order) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <ErrorState
           message={isError ? 'Не удалось загрузить заказ' : 'Заказ не найден'}
           onRetry={isError ? () => refetch() : undefined}
@@ -94,7 +94,7 @@ export default function OrderDetailPage() {
   const canEdit = !!user && (user.role === 'admin' || (user.role === 'manager' && user.id === order.manager_id))
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <button onClick={() => navigate('/')} className="text-sm mb-4 cursor-pointer" style={{ color: 'var(--color-primary)' }}>
         ← Назад к заказам
       </button>

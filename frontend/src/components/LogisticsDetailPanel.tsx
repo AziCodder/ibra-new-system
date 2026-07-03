@@ -429,7 +429,7 @@ export default function LogisticsDetailPanel({
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               />
             </label>
-            <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
               <label className="block">
                 <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Сумма</span>
                 <input

@@ -52,7 +52,7 @@ function UsersTab() {
         <button onClick={() => setShowForm(!showForm)} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer" style={{ background: 'var(--color-primary)', color: '#fff' }}>+ Добавить</button>
       </div>
       {showForm && (
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <input placeholder="Логин" maxLength={64} value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="Пароль" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="ФИО" maxLength={255} value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
@@ -87,7 +87,7 @@ function ClientsTab() {
         <button onClick={() => setShowForm(!showForm)} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer" style={{ background: 'var(--color-primary)', color: '#fff' }}>+ Добавить</button>
       </div>
       {showForm && (
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <input placeholder="Код (M33)" maxLength={20} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="ФИО" maxLength={255} value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="Описание" value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
@@ -122,7 +122,7 @@ function SuppliersTab() {
         <button onClick={() => setShowForm(!showForm)} className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer" style={{ background: 'var(--color-primary)', color: '#fff' }}>+ Добавить</button>
       </div>
       {showForm && (
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           <input placeholder="Название" maxLength={255} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="Контакты" value={form.contacts ?? ''} onChange={(e) => setForm({ ...form, contacts: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
           <input placeholder="Детали" value={form.details ?? ''} onChange={(e) => setForm({ ...form, details: e.target.value })} className="rounded-lg px-3 py-2 text-sm outline-none" style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
@@ -179,14 +179,14 @@ export default function DatabasePage() {
 
   if (user?.role !== 'admin') {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <p style={{ color: 'var(--color-danger)' }}>Доступ только для администраторов</p>
       </div>
     )
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--color-text)' }}>
         База данных
       </h2>

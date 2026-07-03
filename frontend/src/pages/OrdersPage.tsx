@@ -88,7 +88,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>Заказы</h2>
         {canCreate && (

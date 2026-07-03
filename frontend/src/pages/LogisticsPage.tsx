@@ -73,31 +73,30 @@ export default function LogisticsPage() {
   }
 
   return (
-    <div className="p-6 max-w-screen-xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <h1 className="text-xl font-extrabold" style={{ color: 'var(--color-text)' }}>
           Логистика
         </h1>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
           <input
             type="text"
             placeholder="Поиск по трекингу, заказу, товару..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="rounded-lg px-3 py-2 text-sm outline-none"
+            className="rounded-lg px-3 py-2 text-sm outline-none w-full sm:w-60"
             style={{
               background: 'var(--color-surface-2)',
               border: '1px solid var(--color-border)',
               color: 'var(--color-text)',
-              width: 240,
             }}
           />
 
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as LogisticsStatus | '')}
-            className="rounded-lg px-3 py-2 text-sm outline-none"
+            className="rounded-lg px-3 py-2 text-sm outline-none w-full sm:w-auto"
             style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           >
             <option value="">Все статусы</option>
@@ -110,7 +109,7 @@ export default function LogisticsPage() {
             <select
               value={managerId ?? ''}
               onChange={(e) => setManagerId(e.target.value ? Number(e.target.value) : undefined)}
-              className="rounded-lg px-3 py-2 text-sm outline-none"
+              className="rounded-lg px-3 py-2 text-sm outline-none w-full sm:w-auto"
               style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
             >
               <option value="">Все менеджеры</option>
@@ -123,7 +122,7 @@ export default function LogisticsPage() {
           <select
             value={clientId ?? ''}
             onChange={(e) => setClientId(e.target.value ? Number(e.target.value) : undefined)}
-            className="rounded-lg px-3 py-2 text-sm outline-none"
+            className="rounded-lg px-3 py-2 text-sm outline-none w-full sm:w-auto"
             style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           >
             <option value="">Все клиенты</option>
@@ -134,7 +133,7 @@ export default function LogisticsPage() {
 
           <button
             onClick={() => setSort((s) => (s === 'desc' ? 'asc' : 'desc'))}
-            className="rounded-lg px-3 py-2 text-sm cursor-pointer"
+            className="rounded-lg px-3 py-2 text-sm cursor-pointer w-full sm:w-auto"
             style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           >
             Дата {sort === 'desc' ? '↓' : '↑'}
