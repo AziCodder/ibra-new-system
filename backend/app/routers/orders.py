@@ -9,6 +9,7 @@ from app.models.order import Order, OrderStatus
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user, require_role
 from app.schemas.order import OrderCreate, OrderListOut, OrderOut, OrderUpdate
+from app.services.action_log import log_action
 from app.services.order_completion import check_can_complete
 from app.services.order_dependencies import count_order_dependencies
 from app.services.order_number import generate_order_number
@@ -54,6 +55,8 @@ async def create_order(
         details=body.details,
     )
     session.add(order)
+    await session.flush()  # assign order.id before logging
+    await log_action(session, user, "order.created", "order", order.id, f"№{order.number}")
     await session.commit()
     await session.refresh(order)
     return _to_order_out(order, client.full_name, user.full_name)
@@ -200,15 +203,24 @@ async def set_order_status(
                 detail="Cannot complete: not all logistics accepted or payment requests not fully paid",
             )
 
-    if current == OrderStatus.cancelled and target == OrderStatus.in_progress:
-        if user.role != UserRole.admin:
-            raise HTTPException(status_code=403, detail="Only admins can revert a cancelled order")
+    if (
+        current == OrderStatus.cancelled
+        and target == OrderStatus.in_progress
+        and user.role != UserRole.admin
+    ):
+        raise HTTPException(status_code=403, detail="Only admins can revert a cancelled order")
 
-    if current == OrderStatus.completed and target == OrderStatus.in_progress:
-        if user.role != UserRole.admin:
-            raise HTTPException(status_code=403, detail="Only admins can revert a completed order")
+    if (
+        current == OrderStatus.completed
+        and target == OrderStatus.in_progress
+        and user.role != UserRole.admin
+    ):
+        raise HTTPException(status_code=403, detail="Only admins can revert a completed order")
 
     order.status = target
+    await log_action(
+        session, user, "order.status_changed", "order", order.id, f"{current.value}→{target.value}"
+    )
     await session.commit()
     await session.refresh(order)
     return _to_order_out(order, client_name, manager_name)

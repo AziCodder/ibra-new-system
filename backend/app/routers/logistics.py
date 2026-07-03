@@ -12,6 +12,7 @@ from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
 from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsOut, LogisticsUpdate
 from app.schemas.logistics_comment import LogisticsCommentCreate, LogisticsCommentOut
+from app.services.action_log import log_action
 from app.services.logistics_validation import LogisticsValidationError, validate_logistics_quantity
 from app.services.notifications import notify
 
@@ -231,6 +232,10 @@ async def accept_logistics(
     logistics.exchange_rate = body.exchange_rate
     logistics.acceptance_note = body.note
 
+    await log_action(
+        session, user, "logistics.accepted", "logistics", logistics.id,
+        f"order {order_id}, expense {body.expense_amount} {body.currency}",
+    )
     await session.commit()
     await session.refresh(logistics)
     return await _to_logistics_out(logistics, session)

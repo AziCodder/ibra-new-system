@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 
 from app.core.database import async_session_factory
 from app.core.security import hash_password
+from app.models.action_log import ActionLog
 from app.models.client import Client
 from app.models.logistics import Logistics, LogisticsStatus
 from app.models.order import Order, OrderStatus
@@ -76,6 +77,8 @@ async def _cleanup(client_id: int, supplier_id: int, user_ids: list[int]):
         await session.execute(delete(Order).where(Order.client_id == client_id))
         await session.execute(delete(Client).where(Client.id == client_id))
         await session.execute(delete(Supplier).where(Supplier.id == supplier_id))
+        # Audit rows (Phase 12.2) reference users via FK — remove before users.
+        await session.execute(delete(ActionLog).where(ActionLog.actor_id.in_(user_ids)))
         await session.execute(delete(User).where(User.id.in_(user_ids)))
         await session.commit()
 
