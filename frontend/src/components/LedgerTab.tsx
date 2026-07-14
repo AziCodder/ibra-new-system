@@ -5,15 +5,16 @@ import CreateLedgerEntryModal from './CreateLedgerEntryModal'
 import LedgerEntryDetailPanel from './LedgerEntryDetailPanel'
 import ErrorState from './ErrorState'
 import Skeleton from './Skeleton'
+import Tag, { type TagColor } from './Tag'
 
 const TYPE_LABELS: Record<LedgerEntryType, string> = {
   income: 'Доход',
   expense: 'Расход',
 }
 
-const TYPE_BADGE: Record<LedgerEntryType, { bg: string; color: string }> = {
-  income: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-  expense: { bg: 'var(--color-danger-bg)', color: 'var(--color-danger)' },
+const TYPE_COLOR: Record<LedgerEntryType, TagColor> = {
+  income: 'green',
+  expense: 'red',
 }
 
 function formatNumber(value: number): string {
@@ -89,7 +90,7 @@ export default function LedgerTab({
 
       {!isLoading && !isError && (!entries || entries.length === 0) && (
         <div
-          className="rounded-2xl p-12 text-center"
+          className="rounded-[10px] p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
         >
           Записей ДиР пока нет
@@ -97,8 +98,8 @@ export default function LedgerTab({
       )}
 
       {!isLoading && !isError && entries && entries.length > 0 && (
-        <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid var(--color-border)' }}>
-          <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)' }}>
+          <table className="rtable w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted)' }}>Тип</th>
@@ -110,7 +111,6 @@ export default function LedgerTab({
             </thead>
             <tbody>
               {entries.map((entry) => {
-                const badge = TYPE_BADGE[entry.type]
                 return (
                   <tr
                     key={entry.id}
@@ -120,19 +120,17 @@ export default function LedgerTab({
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                   >
-                    <td className="px-4 py-2.5">
-                      <span className="text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: badge.bg, color: badge.color }}>
-                        {TYPE_LABELS[entry.type]}
-                      </span>
+                    <td className="px-4 py-2.5" data-label="Тип">
+                      <Tag color={TYPE_COLOR[entry.type]}>{TYPE_LABELS[entry.type]}</Tag>
                     </td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5 text-right" data-label="Сумма" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatNumber(Number(entry.amount))}
                     </td>
-                    <td className="px-4 py-2.5" style={{ color: 'var(--color-text)' }}>{entry.currency}</td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5" data-label="Валюта" style={{ color: 'var(--color-text)' }}>{entry.currency}</td>
+                    <td className="px-4 py-2.5 text-right" data-label="Курс" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {entry.exchange_rate}
                     </td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5 text-right" data-label="Дата" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatDate(entry.created_at)}
                     </td>
                   </tr>

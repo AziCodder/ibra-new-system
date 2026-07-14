@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { updateProduct, deleteProduct, type Product } from '../api/products'
 import { fetchSuppliers } from '../api/suppliers'
-import FileUploader, { type UploadedFile } from './FileUploader'
+import FileUploader, { isImageKey, type UploadedFile } from './FileUploader'
 
 const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
 
@@ -113,18 +113,35 @@ export default function ProductDetailPanel({
         {!editing && (
           <>
             {product.photo_key ? (
-              <img
-                src={`/api/files/${product.photo_key}`}
-                alt={product.name}
-                className="w-full rounded-xl mb-4 object-cover"
-                style={{ maxHeight: 220, border: '1px solid var(--color-border)' }}
-              />
+              isImageKey(product.photo_key) ? (
+                <a href={`/api/files/${product.photo_key}`} target="_blank" rel="noreferrer">
+                  <img
+                    src={`/api/files/${product.photo_key}`}
+                    alt={product.name}
+                    className="w-full rounded-[8px] mb-4 object-cover"
+                    style={{ maxHeight: 220, border: '1px solid var(--color-border)' }}
+                  />
+                </a>
+              ) : (
+                <a
+                  href={`/api/files/${product.photo_key}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between rounded-[8px] p-4 mb-4 text-sm hover:underline"
+                  style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-primary)' }}
+                >
+                  <span>📎 Скачать вложение</span>
+                  <span style={{ color: 'var(--color-muted)' }}>
+                    {product.photo_key.slice(product.photo_key.lastIndexOf('.') + 1).toUpperCase()}
+                  </span>
+                </a>
+              )
             ) : (
               <div
-                className="rounded-xl p-6 text-center text-sm mb-4"
+                className="rounded-[8px] p-6 text-center text-sm mb-4"
                 style={{ background: 'var(--color-surface-2)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
               >
-                Без фото
+                Без вложения
               </div>
             )}
 
@@ -134,14 +151,14 @@ export default function ProductDetailPanel({
               </p>
             )}
 
-            <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+            <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
               <SummaryRow label="Поставщик" value={product.supplier_name} />
               <SummaryRow label="Количество" value={formatNumber(quantityNum)} />
               <SummaryRow label="Цена" value={`${formatNumber(priceNum)} ${product.currency}`} />
               <SummaryRow label="Итого" value={`${formatNumber(total)} ${product.currency}`} />
             </div>
 
-            <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+            <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
               <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
                 Счета и оплата
               </div>
@@ -150,7 +167,7 @@ export default function ProductDetailPanel({
               <SummaryRow label="Остаток" value={`${formatNumber(total)} ${product.currency}`} />
             </div>
 
-            <div className="rounded-xl p-4 mb-6" style={{ background: 'var(--color-surface-2)' }}>
+            <div className="rounded-[8px] p-4 mb-6" style={{ background: 'var(--color-surface-2)' }}>
               <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
                 Логистика
               </div>
@@ -191,7 +208,7 @@ export default function ProductDetailPanel({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               />
             </label>
 
@@ -202,7 +219,7 @@ export default function ProductDetailPanel({
                 onChange={(e) => setDetails(e.target.value)}
                 rows={2}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none"
-                style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               />
             </label>
 
@@ -216,7 +233,7 @@ export default function ProductDetailPanel({
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                   className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                 />
               </label>
 
@@ -229,7 +246,7 @@ export default function ProductDetailPanel({
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                 />
               </label>
             </div>
@@ -240,7 +257,7 @@ export default function ProductDetailPanel({
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               >
                 {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -252,7 +269,7 @@ export default function ProductDetailPanel({
                 value={supplierId}
                 onChange={(e) => setSupplierId(e.target.value ? Number(e.target.value) : '')}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               >
                 <option value="">Выберите поставщика</option>
                 {suppliers?.map((s) => (
@@ -262,7 +279,7 @@ export default function ProductDetailPanel({
             </label>
 
             <div className="mb-6">
-              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Фото (1 файл)</span>
+              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Вложение (1 файл, любой формат)</span>
               <FileUploader
                 files={photo ? [photo] : []}
                 onUpload={(file) => setPhoto(file)}

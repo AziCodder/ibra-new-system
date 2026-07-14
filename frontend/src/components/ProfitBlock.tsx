@@ -23,9 +23,10 @@ function MetricCard({
     <div
       style={{
         background: highlight ? 'var(--color-success-bg)' : 'var(--color-surface-2)',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 'var(--radius)',
         padding: '8px 14px',
         minWidth: 110,
+        flex: '1 1 auto',
       }}
     >
       <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 4 }}>{label}</div>
@@ -62,7 +63,7 @@ export default function ProfitBlock({ orderId }: { orderId: number }) {
       style={{
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
-        borderRadius: 'var(--r)',
+        borderRadius: 'var(--radius-lg)',
         padding: '16px 20px',
         marginBottom: '20px',
       }}
@@ -81,13 +82,13 @@ export default function ProfitBlock({ orderId }: { orderId: number }) {
             gap: 8,
             background: 'var(--color-warning-bg)',
             border: '1px solid rgba(245,158,11,.3)',
-            borderRadius: 'var(--r-sm)',
+            borderRadius: 'var(--radius)',
             padding: '10px 14px',
             color: 'var(--color-warning)',
             fontSize: 13,
           }}
         >
-          ⚠ Итоги посчитаются после приёмки всей логистики
+          Итоги посчитаются после приёмки всей логистики
         </div>
       )}
 

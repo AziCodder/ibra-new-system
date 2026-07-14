@@ -79,11 +79,13 @@ export interface PaymentRequestSummary extends PaymentRequest {
 export async function fetchAllPaymentRequests(params?: {
   manager_id?: number
   client_id?: number
+  search?: string
   sort?: 'asc' | 'desc'
 }): Promise<PaymentRequestSummary[]> {
   const url = new URL('/api/payment-requests/', window.location.origin)
   if (params?.manager_id) url.searchParams.set('manager_id', String(params.manager_id))
   if (params?.client_id) url.searchParams.set('client_id', String(params.client_id))
+  if (params?.search) url.searchParams.set('search', params.search)
   if (params?.sort) url.searchParams.set('sort', params.sort)
   const res = await fetch(url.toString(), { credentials: 'include' })
   if (!res.ok) throw new Error('Failed to fetch payment requests')

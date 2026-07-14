@@ -34,7 +34,7 @@ class Order(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Snapshot fields — populated by snapshot_order_metrics() when is_ready
-    profit_pct: Mapped[Decimal | None] = mapped_column(Numeric(8, 4), nullable=True)
+    profit_pct: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     processing_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_income: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     profit_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)

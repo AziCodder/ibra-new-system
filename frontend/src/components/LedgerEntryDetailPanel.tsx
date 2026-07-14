@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { deleteLedgerEntry, type LedgerEntry } from '../api/ledgerEntries'
+import Tag from './Tag'
 
 function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
@@ -50,8 +51,8 @@ export default function LedgerEntryDetailPanel({
 
   const badge =
     entry.type === 'income'
-      ? { bg: 'var(--color-success-bg)', color: 'var(--color-success)', label: 'Доход' }
-      : { bg: 'var(--color-danger-bg)', color: 'var(--color-danger)', label: 'Расход' }
+      ? { color: 'green' as const, label: 'Доход' }
+      : { color: 'red' as const, label: 'Расход' }
 
   return (
     <div className="fixed inset-0 z-50" onClick={onClose}>
@@ -79,11 +80,9 @@ export default function LedgerEntryDetailPanel({
           </div>
         )}
 
-        <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: badge.bg, color: badge.color }}>
-              {badge.label}
-            </span>
+            <Tag color={badge.color}>{badge.label}</Tag>
           </div>
           <SummaryRow label="Сумма" value={`${formatNumber(Number(entry.amount))} ${entry.currency}`} />
           <SummaryRow label="Курс" value={entry.exchange_rate} />

@@ -52,7 +52,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
           return (
             <div
               key={t.id}
-              className="rounded-xl px-4 py-3 text-sm font-medium shadow-lg pointer-events-auto"
+              className="rounded-[8px] px-4 py-3 text-sm font-medium shadow-lg pointer-events-auto"
               style={{ background: s.bg, border: `1px solid ${s.border}`, color: s.color }}
             >
               {t.message}

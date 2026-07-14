@@ -67,3 +67,21 @@ async def update_user(
     await session.commit()
     await session.refresh(user)
     return user
+
+
+@router.delete("/{user_id}", status_code=204)
+async def delete_user(
+    user_id: int,
+    admin: User = require_role(UserRole.admin),
+    session: AsyncSession = Depends(get_session),
+):
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    result = await session.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await session.delete(user)
+    await session.commit()

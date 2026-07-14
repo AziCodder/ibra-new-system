@@ -12,6 +12,7 @@ import {
   type LogisticsStatus,
 } from '../api/logistics'
 import FileUploader, { type UploadedFile } from './FileUploader'
+import Tag, { type TagColor } from './Tag'
 
 const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
 
@@ -21,10 +22,10 @@ const STATUS_LABELS: Record<LogisticsStatus, string> = {
   cancelled: 'Отменён',
 }
 
-const STATUS_BADGE: Record<LogisticsStatus, { bg: string; color: string }> = {
-  in_transit: { bg: 'var(--color-info-bg)', color: 'var(--color-info)' },
-  accepted: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-  cancelled: { bg: 'var(--color-danger-bg)', color: 'var(--color-danger)' },
+const STATUS_COLOR: Record<LogisticsStatus, TagColor> = {
+  in_transit: 'orange',
+  accepted: 'green',
+  cancelled: 'red',
 }
 
 function formatNumber(value: number): string {
@@ -191,8 +192,6 @@ export default function LogisticsDetailPanel({
   const canAccept = isAdmin && logistics.status === 'in_transit'
   const canUnaccept = isAdmin && logistics.status === 'accepted'
 
-  const badge = STATUS_BADGE[logistics.status]
-
   return (
     <div className="fixed inset-0 z-50" onClick={onClose}>
       <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.5)' }} />
@@ -220,11 +219,9 @@ export default function LogisticsDetailPanel({
         )}
 
         {!isEditing && (
-          <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+          <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: badge.bg, color: badge.color }}>
-                {STATUS_LABELS[logistics.status]}
-              </span>
+              <Tag color={STATUS_COLOR[logistics.status]}>{STATUS_LABELS[logistics.status]}</Tag>
               <span className="text-xs" style={{ color: 'var(--color-muted)' }}>№{orderNumber}</span>
             </div>
             <SummaryRow label="Товар" value={`${logistics.product_name} · ${formatNumber(Number(logistics.quantity))}`} />
@@ -248,7 +245,7 @@ export default function LogisticsDetailPanel({
         )}
 
         {isEditing && (
-          <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+          <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
             <div className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--color-muted)' }}>
               Редактирование
             </div>
@@ -335,7 +332,7 @@ export default function LogisticsDetailPanel({
         )}
 
         {logistics.status === 'accepted' && (
-          <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+          <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
             <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
               Приёмка
             </div>
@@ -415,7 +412,7 @@ export default function LogisticsDetailPanel({
         )}
 
         {isAccepting && (
-          <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+          <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
             <div className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--color-muted)' }}>
               Приёмка логистики
             </div>
@@ -496,7 +493,7 @@ export default function LogisticsDetailPanel({
           </div>
         )}
 
-        <div className="rounded-xl p-4" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="rounded-[8px] p-4" style={{ background: 'var(--color-surface-2)' }}>
           <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
             Комментарии
           </div>

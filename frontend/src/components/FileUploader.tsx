@@ -6,6 +6,14 @@ export interface UploadedFile {
   size: number
 }
 
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp'])
+
+export function isImageKey(key: string): boolean {
+  const dot = key.lastIndexOf('.')
+  if (dot === -1) return false
+  return IMAGE_EXTENSIONS.has(key.slice(dot).toLowerCase())
+}
+
 interface FileUploaderProps {
   files: UploadedFile[]
   onUpload: (file: UploadedFile) => void
@@ -93,7 +101,15 @@ export default function FileUploader({ files, onUpload, onRemove, disabled }: Fi
               className="flex items-center justify-between rounded-lg px-3 py-2 text-sm"
               style={{ background: 'var(--color-surface-2)', color: 'var(--color-text)' }}
             >
-              <span className="truncate mr-2">{f.filename}</span>
+              <a
+                href={`/api/files/${f.key}`}
+                target="_blank"
+                rel="noreferrer"
+                className="truncate mr-2 hover:underline"
+                style={{ color: 'var(--color-text)' }}
+              >
+                {f.filename}
+              </a>
               <span className="flex items-center gap-3">
                 <span style={{ color: 'var(--color-muted)' }}>{formatSize(f.size)}</span>
                 {!disabled && (

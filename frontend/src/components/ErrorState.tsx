@@ -1,8 +1,5 @@
-/**
- * Clear, consistent error panel for failed data loads (ДИЗАЙН_СИСТЕМА.md).
- * Distinguishes a genuine failure from an empty result so users never see a
- * "nothing found" message when the request actually errored (Итог 13.3).
- */
+import { AlertTriangle } from 'lucide-react'
+
 export default function ErrorState({
   message = 'Не удалось загрузить данные',
   onRetry,
@@ -12,14 +9,14 @@ export default function ErrorState({
 }) {
   return (
     <div
-      className="rounded-2xl p-8 text-center flex flex-col items-center gap-3"
+      className="rounded-[10px] p-8 text-center flex flex-col items-center gap-3"
       style={{
         background: 'var(--color-danger-bg)',
         border: '1px solid var(--color-danger)',
         color: 'var(--color-danger)',
       }}
     >
-      <div className="text-2xl">⚠</div>
+      <AlertTriangle size={28} />
       <div className="text-sm font-medium">{message}</div>
       {onRetry && (
         <button

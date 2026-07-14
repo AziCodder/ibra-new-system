@@ -1,18 +1,30 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import Avatar from './Avatar'
+import {
+  Package,
+  CreditCard,
+  Truck,
+  Database,
+  BarChart3,
+  Sun,
+  Moon,
+  LogOut,
+  Menu,
+} from 'lucide-react'
 
-const ROLE_LABELS: Record<string, string> = {
+const ROLE_LABEL: Record<string, string> = {
   admin: 'Администратор',
   manager: 'Менеджер',
   observer: 'Наблюдатель',
 }
 
-const NAV_ITEMS: { to: string; icon: string; label: string; adminOnly?: boolean }[] = [
-  { to: '/', icon: '📦', label: 'Заказы' },
-  { to: '/payment-requests', icon: '💳', label: 'Оплаты' },
-  { to: '/logistics', icon: '🚚', label: 'Логистика' },
-  { to: '/database', icon: '🗄️', label: 'База данных', adminOnly: true },
+const NAV_ITEMS: { to: string; icon: typeof Package; label: string; adminOnly?: boolean }[] = [
+  { to: '/', icon: Package, label: 'Заказы' },
+  { to: '/payment-requests', icon: CreditCard, label: 'Оплаты' },
+  { to: '/logistics', icon: Truck, label: 'Логистика' },
+  { to: '/database', icon: Database, label: 'База данных', adminOnly: true },
 ]
 
 function ThemeToggle() {
@@ -28,10 +40,20 @@ function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="w-full rounded-lg px-3 py-2 text-sm text-left cursor-pointer"
-      style={{ background: 'var(--color-surface-2)', color: 'var(--color-text)' }}
+      className="flex items-center justify-center cursor-pointer transition-colors"
+      style={{
+        width: 34,
+        height: 34,
+        background: 'transparent',
+        border: '1px solid var(--sidebar-border)',
+        borderRadius: 'var(--radius)',
+        color: 'var(--sidebar-muted)',
+        flexShrink: 0,
+      }}
+      title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+      aria-label="Переключить тему"
     >
-      {theme === 'dark' ? '☀ Светлая' : '🌙 Тёмная'}
+      {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
     </button>
   )
 }
@@ -53,73 +75,97 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
         style={{
-          width: 248,
-          background: 'var(--color-sidebar)',
-          borderRight: '1px solid var(--color-border)',
+          width: 232,
+          background: 'var(--sidebar-bg)',
+          borderRight: '1px solid var(--sidebar-border)',
         }}
       >
-        <div className="px-5 py-5">
-          <div className="text-base font-extrabold" style={{ color: 'var(--color-text)' }}>
+        <div className="flex items-center gap-2.5" style={{ padding: '18px 18px 16px', flexShrink: 0 }}>
+          <div
+            className="flex items-center justify-center flex-shrink-0 font-bold"
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 10,
+              background: 'var(--sidebar-active-bg)',
+              color: '#fff',
+              fontSize: 13,
+            }}
+          >
+            IO
+          </div>
+          <div className="text-[15px]" style={{ color: 'var(--sidebar-text)', fontWeight: 700, letterSpacing: '-0.01em' }}>
             Ibra Order System
           </div>
         </div>
 
-        <nav className="flex-1 px-3 flex flex-col gap-1">
+        <nav style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '4px 12px' }} className="flex flex-col gap-1">
           {NAV_ITEMS.filter((item) => !item.adminOnly || user?.role === 'admin').map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/'}
               onClick={onClose}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors"
+              className="flex items-center gap-2.5 text-sm transition-colors"
               style={({ isActive }) => ({
-                background: isActive ? 'var(--color-primary-bg)' : 'transparent',
-                color: isActive ? 'var(--color-primary)' : 'var(--color-muted)',
+                background: isActive ? 'var(--sidebar-active-bg)' : 'transparent',
+                color: isActive ? 'var(--sidebar-active-text)' : 'var(--sidebar-text)',
+                borderRadius: 10,
+                padding: '9px 12px',
+                fontWeight: isActive ? 600 : 400,
               })}
             >
-              <span>{item.icon}</span>
+              <item.icon size={16} />
               {item.label}
             </NavLink>
           ))}
           <div
-            className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium opacity-50"
-            style={{ color: 'var(--color-faint)' }}
+            className="flex items-center gap-2.5 text-sm opacity-60"
+            style={{ color: 'var(--sidebar-muted)', borderRadius: 10, padding: '9px 12px' }}
           >
-            <span>📊</span>
+            <BarChart3 size={16} />
             Аналитика
             <span
-              className="ml-auto text-[10px] rounded-full px-1.5 py-0.5"
-              style={{ background: 'var(--color-surface-3)' }}
+              className="ml-auto text-[10px] px-1.5 py-0.5"
+              style={{ background: 'var(--sidebar-hover-bg)', color: 'var(--sidebar-muted)', borderRadius: 'var(--radius-sm)' }}
             >
               скоро
             </span>
           </div>
         </nav>
 
-        <div className="px-3 py-4 flex flex-col gap-2" style={{ borderTop: '1px solid var(--color-border)' }}>
-          <ThemeToggle />
-          <button
-            onClick={() => logout()}
-            className="w-full rounded-lg px-3 py-2 text-sm text-left cursor-pointer"
-            style={{ background: 'var(--color-surface-2)', color: 'var(--color-danger)' }}
-          >
-            Выйти
-          </button>
-          <div className="flex items-center gap-2.5 px-1 pt-1">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ background: 'var(--color-primary)', color: '#fff' }}
+        <div style={{ padding: 14, borderTop: '1px solid var(--sidebar-border)', flexShrink: 0 }}>
+          {user && (
+            <div className="flex items-center gap-2.5 mb-3">
+              <Avatar name={user.full_name} background="var(--sidebar-avatar-bg)" />
+              <div className="min-w-0">
+                <div className="text-sm truncate" style={{ color: 'var(--sidebar-text)', fontWeight: 600 }}>
+                  {user.full_name}
+                </div>
+                <div className="text-xs truncate" style={{ color: 'var(--sidebar-muted)' }}>
+                  {ROLE_LABEL[user.role] ?? user.role}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <button
+              onClick={() => logout()}
+              className="flex items-center justify-center gap-1.5 text-sm cursor-pointer transition-colors flex-1"
+              style={{
+                height: 34,
+                background: 'transparent',
+                border: '1px solid var(--sidebar-border)',
+                borderRadius: 'var(--radius)',
+                color: 'var(--color-danger)',
+              }}
+              title="Выйти"
+              aria-label="Выйти"
             >
-              {user?.full_name?.[0] || user?.login?.[0]?.toUpperCase() || '?'}
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm truncate" style={{ color: 'var(--color-text)' }}>
-                {user?.full_name || user?.login}
-              </div>
-              <div className="text-xs" style={{ color: 'var(--color-muted)' }}>
-                {user ? ROLE_LABELS[user.role] : ''}
-              </div>
-            </div>
+              <LogOut size={14} />
+              Выйти
+            </button>
           </div>
         </div>
       </aside>
@@ -135,19 +181,29 @@ export default function Layout({ children }: { children: ReactNode }) {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
         <header
-          className="flex items-center gap-3 px-4 py-3 md:hidden"
-          style={{ borderBottom: '1px solid var(--color-border)' }}
+          className="flex items-center gap-3 px-3 md:hidden"
+          style={{
+            height: 56,
+            borderBottom: '1px solid var(--sidebar-border)',
+            background: 'var(--sidebar-bg)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+          }}
         >
           <button
             onClick={() => setSidebarOpen(true)}
-            className="cursor-pointer text-lg"
-            style={{ color: 'var(--color-text)' }}
+            className="cursor-pointer flex items-center justify-center"
+            style={{ color: 'var(--sidebar-text)', width: 32, height: 32 }}
             aria-label="Меню"
           >
-            ☰
+            <Menu size={18} />
           </button>
+          <span className="text-[15px]" style={{ color: 'var(--sidebar-text)', fontWeight: 700, letterSpacing: '-0.01em' }}>
+            Ibra Order System
+          </span>
         </header>
-        <main className="flex-1 min-w-0">{children}</main>
+        <main className="flex-1 min-w-0" style={{ background: 'var(--color-bg)' }}>{children}</main>
       </div>
     </div>
   )

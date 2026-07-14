@@ -27,14 +27,15 @@ from app.routers.products import router as products_router
 from app.routers.profit import router as profit_router
 from app.routers.suppliers import router as suppliers_router
 from app.routers.users import router as users_router
-from app.services.telegram_bot import close_bot
+from app.services.telegram_bot import close_bot, start_polling, stop_polling
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(production=settings.is_production)
+    await start_polling()
     yield
-    # Close the shared aiogram bot session cleanly on shutdown.
+    await stop_polling()
     await close_bot()
 
 

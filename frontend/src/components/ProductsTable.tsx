@@ -60,7 +60,7 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
 
       {!isLoading && !isError && (!products || products.length === 0) && (
         <div
-          className="rounded-2xl p-12 text-center"
+          className="rounded-[10px] p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
         >
           Товаров пока нет
@@ -68,8 +68,8 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
       )}
 
       {!isLoading && products && products.length > 0 && (
-        <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid var(--color-border)' }}>
-          <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-border)' }}>
+          <table className="rtable w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted)' }}>
@@ -99,16 +99,16 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                   >
-                    <td className="px-4 py-2.5" style={{ color: 'var(--color-text)' }}>
+                    <td className="px-4 py-2.5" data-label="Наименование" style={{ color: 'var(--color-text)' }}>
                       {product.name}
                     </td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5 text-right" data-label="Кол-во" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatNumber(quantity)}
                     </td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5 text-right" data-label="Цена" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatNumber(price)} {product.currency}
                     </td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5 text-right" data-label="Сумма" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatNumber(quantity * price)} {product.currency}
                     </td>
                   </tr>
@@ -121,11 +121,11 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
                   <td className="px-4 py-2.5 font-semibold" style={{ color: 'var(--color-text)' }}>
                     Итого {currency}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                  <td className="px-4 py-2.5 text-right font-semibold" data-label="Кол-во" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                     {formatNumber(totals.quantity)}
                   </td>
                   <td className="px-4 py-2.5" />
-                  <td className="px-4 py-2.5 text-right font-semibold" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                  <td className="px-4 py-2.5 text-right font-semibold" data-label="Сумма" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                     {formatNumber(totals.sum)} {currency}
                   </td>
                 </tr>

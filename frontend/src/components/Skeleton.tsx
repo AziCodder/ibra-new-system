@@ -33,7 +33,7 @@ export default function Skeleton({
 export function SkeletonCard({ lines = 3 }: { lines?: number }) {
   return (
     <div
-      className="rounded-2xl p-5 flex flex-col gap-3"
+      className="rounded-[10px] p-5 flex flex-col gap-3"
       style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
     >
       <Skeleton width="55%" height={18} />
@@ -58,7 +58,7 @@ export function SkeletonCardGrid({ count = 6 }: { count?: number }) {
 /** Skeleton rows mimicking a data table while loading. */
 export function SkeletonTableRows({ rows = 4 }: { rows?: number }) {
   return (
-    <div className="rounded-2xl p-4 flex flex-col gap-2" style={{ border: '1px solid var(--color-border)' }}>
+    <div className="rounded-[10px] p-4 flex flex-col gap-2" style={{ border: '1px solid var(--color-border)' }}>
       {Array.from({ length: rows }).map((_, i) => (
         <Skeleton key={i} height={44} radius={10} />
       ))}

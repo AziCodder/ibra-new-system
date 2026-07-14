@@ -2,18 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--host", "127.0.0.1"],
-      "cwd": "frontend",
+      "name": "dev",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "-d", "--wait"],
       "port": 5173
-    },
-    {
-      "name": "backend",
-      "runtimeExecutable": "C:/Users/Абдул-Азиз/AppData/Local/Programs/Python/Python311/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8011"],
-      "cwd": "backend",
-      "port": 8011
     }
   ]
 }

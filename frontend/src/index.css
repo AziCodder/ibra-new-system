@@ -1,57 +1,143 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
 }
 
 :root[data-theme="dark"] {
-  --color-bg: #0E1116;
-  --color-sidebar: #0B0E13;
-  --color-surface: #161A22;
-  --color-surface-2: #1C212B;
-  --color-surface-3: #232A36;
-  --color-border: #232A36;
-  --color-border-soft: #1B212B;
-  --color-track: #2A3140;
-  --color-text: #E6E9EF;
-  --color-muted: #8A93A3;
-  --color-faint: #5C6473;
-  --color-primary: #5B5FE9;
-  --color-primary-d: #4B4FD6;
-  --color-primary-bg: rgba(91, 95, 233, 0.14);
-  --color-success: #22C55E;
+  /* colorBgLayout / colorBgContainer / colorBgElevated / colorBgSpotlight */
+  --color-bg: #0f1115;
+  --color-sidebar: #1a1d23;
+  --color-surface: #1a1d23;
+  --color-surface-2: #272b33;
+  --color-surface-3: #22262e;
+  /* colorBorder / colorBorderSecondary */
+  --color-border: #2d3139;
+  --color-border-soft: #24272e;
+  --color-card-border: #2d3139;
+  --color-track: #3a3f4a;
+  --color-track-hover: #4a5060;
+  /* colorText / colorTextSecondary / colorTextTertiary */
+  --color-text: #e5e7eb;
+  --color-muted: #9ca3af;
+  --color-faint: #6b7280;
+  --color-primary: #7c93ff;
+  --color-primary-d: #95a8ff;
+  --color-primary-bg: rgba(124, 147, 255, 0.15);
+  --color-primary-bg-hover: rgba(124, 147, 255, 0.08);
+  --color-menu-selected-bg: rgba(124, 147, 255, 0.15);
+  --color-menu-selected-text: #a5b4ff;
+  --color-menu-hover-bg: rgba(124, 147, 255, 0.08);
+  --color-success: #22c55e;
   --color-success-bg: rgba(34, 197, 94, 0.12);
-  --color-danger: #EF4444;
-  --color-danger-bg: rgba(239, 68, 68, 0.12);
-  --color-warning: #F59E0B;
-  --color-warning-bg: rgba(245, 158, 11, 0.14);
-  --color-info: #3B82F6;
-  --color-info-bg: rgba(59, 130, 246, 0.14);
+  --color-danger: #f87171;
+  --color-danger-bg: rgba(248, 113, 113, 0.12);
+  --color-warning: #fbbf24;
+  --color-warning-bg: rgba(251, 191, 36, 0.14);
+  --color-info: #7c93ff;
+  --color-info-bg: rgba(124, 147, 255, 0.15);
+
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.2);
+
+  /* Ant Design preset Tag palette (dark theme) */
+  --tag-green-bg: #162312;
+  --tag-green-border: #274916;
+  --tag-green-text: #49aa19;
+  --tag-blue-bg: #111a2c;
+  --tag-blue-border: #15325b;
+  --tag-blue-text: #3c89e8;
+  --tag-orange-bg: #2b1d11;
+  --tag-orange-border: #593815;
+  --tag-orange-text: #d87a16;
+  --tag-purple-bg: #1a1325;
+  --tag-purple-border: #301c4d;
+  --tag-purple-text: #9254de;
+  --tag-red-bg: #2a1215;
+  --tag-red-border: #58181c;
+  --tag-red-text: #dc4446;
+  --tag-default-bg: #1f1f1f;
+  --tag-default-border: #424242;
+  --tag-default-text: #e5e7eb;
 }
 
 :root[data-theme="light"] {
-  --color-bg: #F1F5F9;
-  --color-sidebar: #0F172A;
-  --color-surface: #FFFFFF;
-  --color-surface-2: #F8FAFC;
-  --color-surface-3: #EEF2FF;
-  --color-border: #E2E8F0;
-  --color-border-soft: #EDF1F6;
-  --color-track: #E2E8F0;
-  --color-text: #0F172A;
-  --color-muted: #64748B;
-  --color-faint: #94A3B8;
-  --color-primary: #4F46E5;
-  --color-primary-d: #4338CA;
-  --color-primary-bg: #EEF2FF;
-  --color-success: #059669;
-  --color-success-bg: #ECFDF5;
-  --color-danger: #DC2626;
-  --color-danger-bg: #FEF2F2;
-  --color-warning: #D97706;
-  --color-warning-bg: #FFFBEB;
-  --color-info: #2563EB;
-  --color-info-bg: #EFF6FF;
+  /* colorBgLayout / colorBgContainer / colorBgElevated / colorBgSpotlight */
+  --color-bg: #f5f7fa;
+  --color-sidebar: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #f9fafb;
+  --color-surface-3: #f1f3f5;
+  /* colorBorder / colorBorderSecondary */
+  --color-border: #e5e7eb;
+  --color-border-soft: #f1f3f5;
+  --color-card-border: #eceff3;
+  --color-track: #cbd5e1;
+  --color-track-hover: #94a3b8;
+  /* colorText / colorTextSecondary / colorTextTertiary */
+  --color-text: #1f2937;
+  --color-muted: #6b7280;
+  --color-faint: #9ca3af;
+  --color-primary: #5b7cfa;
+  --color-primary-d: #4a6dea;
+  --color-primary-bg: rgba(91, 124, 250, 0.08);
+  --color-primary-bg-hover: rgba(91, 124, 250, 0.04);
+  --color-menu-selected-bg: rgba(91, 124, 250, 0.08);
+  --color-menu-selected-text: #5b7cfa;
+  --color-menu-hover-bg: rgba(91, 124, 250, 0.04);
+  --color-success: #16a34a;
+  --color-success-bg: rgba(22, 163, 74, 0.1);
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.1);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-info: #5b7cfa;
+  --color-info-bg: rgba(91, 124, 250, 0.08);
+
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+
+  /* Ant Design preset Tag palette (light theme) */
+  --tag-green-bg: #f6ffed;
+  --tag-green-border: #b7eb8f;
+  --tag-green-text: #389e0d;
+  --tag-blue-bg: #e6f4ff;
+  --tag-blue-border: #91caff;
+  --tag-blue-text: #0958d9;
+  --tag-orange-bg: #fff7e6;
+  --tag-orange-border: #ffd591;
+  --tag-orange-text: #d46b08;
+  --tag-purple-bg: #f9f0ff;
+  --tag-purple-border: #d3adf7;
+  --tag-purple-text: #722ed1;
+  --tag-red-bg: #fff1f0;
+  --tag-red-border: #ffa39e;
+  --tag-red-text: #cf1322;
+  --tag-default-bg: #fafafa;
+  --tag-default-border: #d9d9d9;
+  --tag-default-text: #1f2937;
+}
+
+/* Radius scale: borderRadiusSM=4 (tags), borderRadius=8 (buttons/inputs), borderRadiusLG=10 (cards/modals) */
+:root {
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 10px;
+}
+
+/* Sidebar tokens — constant, NOT switched by data-theme (always-dark app shell) */
+:root {
+  --sidebar-bg: #12141c;
+  --sidebar-border: #1f222f;
+  --sidebar-text: #e7e8f3;
+  --sidebar-muted: #9295ab;
+  --sidebar-faint: #5f6274;
+  --sidebar-active-bg: #6c63ff;
+  --sidebar-active-text: #ffffff;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
+  --sidebar-avatar-bg: #6c63ff;
 }
 
 body {
@@ -60,8 +146,80 @@ body {
   color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease;
 }
 
 #root {
   min-height: 100vh;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-track);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-track-hover);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+:root[data-theme="dark"] input:-webkit-autofill,
+:root[data-theme="dark"] input:-webkit-autofill:hover,
+:root[data-theme="dark"] input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #e5e7eb;
+  -webkit-box-shadow: 0 0 0 1000px #1a1d23 inset;
+  caret-color: #e5e7eb;
+}
+
+/* Responsive table: on narrow screens each row becomes a labeled card instead of horizontal scroll. */
+@media (max-width: 760px) {
+  table.rtable thead {
+    display: none;
+  }
+  table.rtable,
+  table.rtable tbody,
+  table.rtable tr,
+  table.rtable td {
+    display: block;
+    width: 100%;
+  }
+  table.rtable tr {
+    padding: 10px 12px;
+    border-top: 1px solid var(--color-border);
+  }
+  table.rtable tr:first-child {
+    border-top: none;
+  }
+  table.rtable td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    text-align: right;
+    border: none !important;
+  }
+  table.rtable td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--color-faint);
+    text-align: left;
+    flex-shrink: 0;
+  }
+  table.rtable td:empty {
+    display: none;
+  }
 }

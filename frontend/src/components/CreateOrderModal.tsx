@@ -36,7 +36,7 @@ export default function CreateOrderModal({ onClose }: { onClose: () => void }) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-2xl p-6"
+        className="w-full max-w-md rounded-[10px] p-6"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
       >
         <h3 className="text-base font-semibold mb-5" style={{ color: 'var(--color-text)' }}>
@@ -58,7 +58,7 @@ export default function CreateOrderModal({ onClose }: { onClose: () => void }) {
             value={clientId}
             onChange={(e) => setClientId(e.target.value ? Number(e.target.value) : '')}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           >
             <option value="">Выберите клиента</option>
             {clients?.map((c) => (
@@ -73,7 +73,7 @@ export default function CreateOrderModal({ onClose }: { onClose: () => void }) {
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           >
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -86,7 +86,7 @@ export default function CreateOrderModal({ onClose }: { onClose: () => void }) {
             onChange={(e) => setDetails(e.target.value)}
             rows={3}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
         </label>
 

@@ -11,11 +11,12 @@ import { useAuth } from '../contexts/AuthContext'
 import ProfitBlock from '../components/ProfitBlock'
 import Skeleton from '../components/Skeleton'
 import ErrorState from '../components/ErrorState'
+import Tag, { type TagColor } from '../components/Tag'
 
-const STATUS_BADGE: Record<OrderStatus, { label: string; bg: string; color: string }> = {
-  in_progress: { label: 'В работе', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-  completed: { label: 'Завершён', bg: 'var(--color-primary-bg)', color: 'var(--color-primary)' },
-  cancelled: { label: 'Отменён', bg: 'var(--color-danger-bg)', color: 'var(--color-danger)' },
+const STATUS_BADGE: Record<OrderStatus, { label: string; color: TagColor }> = {
+  in_progress: { label: 'В работе', color: 'green' },
+  completed: { label: 'Завершён', color: 'blue' },
+  cancelled: { label: 'Отменён', color: 'red' },
 }
 
 type TabKey = 'items' | 'payments' | 'logistics' | 'finance'
@@ -99,14 +100,12 @@ export default function OrderDetailPage() {
         ← Назад к заказам
       </button>
 
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-3">
-          <span className="text-xs" style={{ color: 'var(--color-faint)' }}>№{order.id}</span>
-          <h2 className="text-xl font-bold" style={{ color: 'var(--color-text)' }}>{order.number}</h2>
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-xs flex-shrink-0" style={{ color: 'var(--color-faint)' }}>№{order.id}</span>
+          <h1 className="text-xl sm:text-2xl font-bold truncate" style={{ color: 'var(--color-text)' }}>{order.number}</h1>
         </div>
-        <span className="text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: badge.bg, color: badge.color }}>
-          {badge.label}
-        </span>
+        <Tag color={badge.color}>{badge.label}</Tag>
       </div>
 
       <div className="flex gap-3 text-sm flex-wrap mb-6" style={{ color: 'var(--color-muted)' }}>
@@ -161,7 +160,7 @@ export default function OrderDetailPage() {
 
       {order.details && (
         <div
-          className="rounded-xl p-4 text-sm mb-6"
+          className="rounded-[8px] p-4 text-sm mb-6"
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
         >
           {order.details}

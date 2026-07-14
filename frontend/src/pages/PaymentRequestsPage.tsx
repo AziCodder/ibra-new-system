@@ -12,6 +12,9 @@ import { useAuth } from '../contexts/AuthContext'
 import PaymentRequestDetailPanel from '../components/PaymentRequestDetailPanel'
 import ErrorState from '../components/ErrorState'
 import Skeleton from '../components/Skeleton'
+import Tag, { type TagColor } from '../components/Tag'
+import PageHeader from '../components/PageHeader'
+import SearchInput from '../components/SearchInput'
 
 const PRIORITY_LABELS: Record<PaymentRequestPriority, string> = {
   low: 'Низкий',
@@ -19,10 +22,10 @@ const PRIORITY_LABELS: Record<PaymentRequestPriority, string> = {
   urgent: 'Срочно',
 }
 
-const PRIORITY_STYLE: Record<PaymentRequestPriority, { bg: string; color: string }> = {
-  low: { bg: 'var(--color-surface-3)', color: 'var(--color-muted)' },
-  normal: { bg: 'var(--color-primary-bg)', color: 'var(--color-primary)' },
-  urgent: { bg: 'var(--color-danger-bg)', color: 'var(--color-danger)' },
+const PRIORITY_COLOR: Record<PaymentRequestPriority, TagColor> = {
+  low: 'default',
+  normal: 'blue',
+  urgent: 'red',
 }
 
 function formatNum(v: string | number) {
@@ -35,12 +38,13 @@ export default function PaymentRequestsPage() {
 
   const [clientId, setClientId] = useState<number | undefined>()
   const [managerId, setManagerId] = useState<number | undefined>()
+  const [search, setSearch] = useState('')
   const [sort, setSort] = useState<'asc' | 'desc'>('desc')
   const [selected, setSelected] = useState<PaymentRequestSummary | null>(null)
 
   const { data: requests, isLoading, isError, refetch } = useQuery({
-    queryKey: ['all-payment-requests', clientId, managerId, sort],
-    queryFn: () => fetchAllPaymentRequests({ client_id: clientId, manager_id: managerId, sort }),
+    queryKey: ['all-payment-requests', clientId, managerId, search, sort],
+    queryFn: () => fetchAllPaymentRequests({ client_id: clientId, manager_id: managerId, search: search || undefined, sort }),
   })
 
   const { data: clients } = useQuery({
@@ -65,18 +69,22 @@ export default function PaymentRequestsPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-screen-xl mx-auto">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="text-xl font-extrabold" style={{ color: 'var(--color-text)' }}>
-          Запросы на оплату
-        </h1>
+      <PageHeader title="Запросы на оплату" subtitle="Все запросы по всем заказам">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Поиск по номеру заказа, клиенту..."
+          className="flex-1 sm:flex-initial sm:w-64"
+        />
+      </PageHeader>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center flex-wrap gap-3 mb-6">
           {(user?.role === 'admin' || user?.role === 'observer') && (
             <select
               value={managerId ?? ''}
               onChange={(e) => setManagerId(e.target.value ? Number(e.target.value) : undefined)}
-              className="rounded-lg px-3 py-2 text-sm outline-none w-full sm:w-auto"
-              style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+              className="text-sm outline-none w-full sm:w-auto px-3"
+              style={{ height: 32, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', color: 'var(--color-text)' }}
             >
               <option value="">Все менеджеры</option>
               {managers.map((m) => (
@@ -88,8 +96,8 @@ export default function PaymentRequestsPage() {
           <select
             value={clientId ?? ''}
             onChange={(e) => setClientId(e.target.value ? Number(e.target.value) : undefined)}
-            className="rounded-lg px-3 py-2 text-sm outline-none w-full sm:w-auto"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            className="text-sm outline-none w-full sm:w-auto px-3"
+            style={{ height: 32, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', color: 'var(--color-text)' }}
           >
             <option value="">Все клиенты</option>
             {clients?.map((c) => (
@@ -99,12 +107,11 @@ export default function PaymentRequestsPage() {
 
           <button
             onClick={() => setSort((s) => (s === 'desc' ? 'asc' : 'desc'))}
-            className="rounded-lg px-3 py-2 text-sm cursor-pointer w-full sm:w-auto"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            className="text-sm cursor-pointer w-full sm:w-auto px-3"
+            style={{ height: 32, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', color: 'var(--color-text)' }}
           >
             Дата {sort === 'desc' ? '↓' : '↑'}
           </button>
-        </div>
       </div>
 
       {isLoading && (
@@ -121,20 +128,20 @@ export default function PaymentRequestsPage() {
 
       {!isLoading && !isError && (!requests || requests.length === 0) && (
         <div
-          className="rounded-2xl p-12 text-center"
-          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
+          className="rounded-[10px] p-12 text-center"
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)' }}
         >
-          <div className="text-4xl mb-3">💳</div>
+          <div className="mb-3" style={{ color: 'var(--color-faint)' }}><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div>
           <div className="text-sm" style={{ color: 'var(--color-muted)' }}>Запросов на оплату нет</div>
         </div>
       )}
 
       {!isLoading && requests && requests.length > 0 && (
         <div
-          className="rounded-2xl overflow-x-auto"
-          style={{ border: '1px solid var(--color-border)' }}
+          className="rounded-[10px] overflow-x-auto"
+          style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)' }}
         >
-          <table className="w-full text-sm border-collapse">
+          <table className="rtable w-full text-sm border-collapse">
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
                 {['№ заказа', 'Клиент', 'Менеджер', 'Дата', 'Сумма', 'Остаток', 'Приоритет'].map((h) => (
@@ -151,7 +158,6 @@ export default function PaymentRequestsPage() {
             <tbody>
               {requests.map((req) => {
                 const isSelected = selected?.id === req.id
-                const priorityStyle = PRIORITY_STYLE[req.priority]
                 return (
                   <tr
                     key={req.id}
@@ -168,7 +174,7 @@ export default function PaymentRequestsPage() {
                       if (!isSelected) (e.currentTarget as HTMLTableRowElement).style.background = 'var(--color-surface)'
                     }}
                   >
-                    <td className="px-4 py-3 font-bold" style={{ color: 'var(--color-primary)' }}>
+                    <td className="px-4 py-3 font-bold" data-label="№ заказа" style={{ color: 'var(--color-primary)' }}>
                       <Link
                         to={`/orders/${req.order_id}`}
                         onClick={(e) => e.stopPropagation()}
@@ -177,24 +183,19 @@ export default function PaymentRequestsPage() {
                         {req.order_number}
                       </Link>
                     </td>
-                    <td className="px-4 py-3" style={{ color: 'var(--color-text)' }}>{req.client_name}</td>
-                    <td className="px-4 py-3" style={{ color: 'var(--color-muted)' }}>{req.manager_name}</td>
-                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--color-muted)' }}>
+                    <td className="px-4 py-3" data-label="Клиент" style={{ color: 'var(--color-text)' }}>{req.client_name}</td>
+                    <td className="px-4 py-3" data-label="Менеджер" style={{ color: 'var(--color-muted)' }}>{req.manager_name}</td>
+                    <td className="px-4 py-3 whitespace-nowrap" data-label="Дата" style={{ color: 'var(--color-muted)' }}>
                       {new Date(req.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: '2-digit' })}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-3 whitespace-nowrap" data-label="Сумма" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatNum(req.total_amount)} {req.currency}
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap" style={{ color: Number(req.remaining_amount) > 0 ? 'var(--color-danger)' : 'var(--color-success)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-3 whitespace-nowrap" data-label="Остаток" style={{ color: Number(req.remaining_amount) > 0 ? 'var(--color-danger)' : 'var(--color-success)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatNum(req.remaining_amount)} {req.currency}
                     </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="text-xs font-semibold rounded-full px-2.5 py-1"
-                        style={{ background: priorityStyle.bg, color: priorityStyle.color }}
-                      >
-                        {PRIORITY_LABELS[req.priority]}
-                      </span>
+                    <td className="px-4 py-3" data-label="Приоритет">
+                      <Tag color={PRIORITY_COLOR[req.priority]}>{PRIORITY_LABELS[req.priority]}</Tag>
                     </td>
                   </tr>
                 )

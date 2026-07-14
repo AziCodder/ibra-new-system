@@ -5,6 +5,7 @@ import CreateLogisticsModal from './CreateLogisticsModal'
 import LogisticsDetailPanel from './LogisticsDetailPanel'
 import ErrorState from './ErrorState'
 import Skeleton from './Skeleton'
+import Tag, { type TagColor } from './Tag'
 
 const STATUS_LABELS: Record<LogisticsStatus, string> = {
   in_transit: 'В дороге',
@@ -12,10 +13,10 @@ const STATUS_LABELS: Record<LogisticsStatus, string> = {
   cancelled: 'Отменён',
 }
 
-const STATUS_BADGE: Record<LogisticsStatus, { bg: string; color: string }> = {
-  in_transit: { bg: 'var(--color-info-bg)', color: 'var(--color-info)' },
-  accepted: { bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-  cancelled: { bg: 'var(--color-danger-bg)', color: 'var(--color-danger)' },
+const STATUS_COLOR: Record<LogisticsStatus, TagColor> = {
+  in_transit: 'orange',
+  accepted: 'green',
+  cancelled: 'red',
 }
 
 function formatNumber(value: number): string {
@@ -53,8 +54,8 @@ export default function LogisticsTab({
         <div className="flex justify-end mb-3">
           <button
             onClick={() => setShowCreateModal(true)}
-            className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer"
-            style={{ background: 'var(--color-primary)', color: '#fff' }}
+            className="text-sm font-medium cursor-pointer px-[15px]"
+            style={{ height: 36, background: 'var(--color-primary)', borderRadius: 'var(--radius)', color: '#fff' }}
           >
             + Создать логистику
           </button>
@@ -75,7 +76,7 @@ export default function LogisticsTab({
 
       {!isLoading && !isError && (!logisticsList || logisticsList.length === 0) && (
         <div
-          className="rounded-2xl p-12 text-center"
+          className="rounded-[10px] p-12 text-center"
           style={{ background: 'var(--color-surface)', border: '1px dashed var(--color-border)', color: 'var(--color-muted)' }}
         >
           Записей логистики пока нет
@@ -83,8 +84,8 @@ export default function LogisticsTab({
       )}
 
       {!isLoading && !isError && logisticsList && logisticsList.length > 0 && (
-        <div className="rounded-2xl overflow-x-auto" style={{ border: '1px solid var(--color-border)' }}>
-          <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)' }}>
+          <table className="rtable w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--color-muted)' }}>Статус</th>
@@ -97,7 +98,6 @@ export default function LogisticsTab({
             </thead>
             <tbody>
               {logisticsList.map((l) => {
-                const badge = STATUS_BADGE[l.status]
                 return (
                   <tr
                     key={l.id}
@@ -107,22 +107,20 @@ export default function LogisticsTab({
                     onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-surface-2)' }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                   >
-                    <td className="px-4 py-2.5">
-                      <span className="text-xs font-semibold rounded-full px-2.5 py-1" style={{ background: badge.bg, color: badge.color }}>
-                        {STATUS_LABELS[l.status]}
-                      </span>
+                    <td className="px-4 py-2.5" data-label="Статус">
+                      <Tag color={STATUS_COLOR[l.status]}>{STATUS_LABELS[l.status]}</Tag>
                     </td>
-                    <td className="px-4 py-2.5" style={{ color: 'var(--color-text)' }}>{l.tracking || '—'}</td>
-                    <td className="px-4 py-2.5" style={{ color: 'var(--color-text)' }}>
+                    <td className="px-4 py-2.5" data-label="Трекинг" style={{ color: 'var(--color-text)' }}>{l.tracking || '—'}</td>
+                    <td className="px-4 py-2.5" data-label="Товар" style={{ color: 'var(--color-text)' }}>
                       {l.product_name} · {formatNumber(Number(l.quantity))}
                     </td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5 text-right" data-label="Дата отправки" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatDate(l.ship_date)}
                     </td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5 text-right" data-label="Дата приёмки" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatDate(l.received_date)}
                     </td>
-                    <td className="px-4 py-2.5 text-right" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    <td className="px-4 py-2.5 text-right" data-label="Расход" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {l.expense_amount ? `${formatNumber(Number(l.expense_amount))} ${l.currency}` : '—'}
                     </td>
                   </tr>

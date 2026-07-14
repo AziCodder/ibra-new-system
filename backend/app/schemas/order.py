@@ -32,6 +32,9 @@ class OrderOut(BaseModel):
     processing_days: int | None = None
     total_income: Decimal | None = None
     profit_amount: Decimal | None = None
+    # None = no payment request created yet for this order ("ждёт счёт")
+    requested_amount: Decimal | None = None
+    paid_amount: Decimal | None = None
 
     model_config = {"from_attributes": True}
 
@@ -41,3 +44,14 @@ class OrderListOut(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class OrderStatsOut(BaseModel):
+    total_count: int
+    total_count_delta_month: int
+    in_progress_count: int
+    waiting_payment_count: int
+    completed_count: int
+    completed_pct_month: float | None
+    profit_month: dict[str, Decimal]
+    profit_month_delta_pct: float | None

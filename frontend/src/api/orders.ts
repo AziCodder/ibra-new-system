@@ -11,6 +11,8 @@ export interface Order {
   currency: string
   details: string
   created_at: string
+  requested_amount: string | null
+  paid_amount: string | null
 }
 
 export interface OrderListResponse {
@@ -24,6 +26,7 @@ export interface OrderFilters {
   client_id?: number
   status?: OrderStatus
   manager_id?: number
+  search?: string
   page?: number
   page_size?: number
 }
@@ -33,6 +36,7 @@ export async function fetchOrders(filters: OrderFilters = {}): Promise<OrderList
   if (filters.client_id != null) params.set('client_id', String(filters.client_id))
   if (filters.status) params.set('status', filters.status)
   if (filters.manager_id != null) params.set('manager_id', String(filters.manager_id))
+  if (filters.search) params.set('search', filters.search)
   params.set('page', String(filters.page ?? 1))
   params.set('page_size', String(filters.page_size ?? 20))
 
@@ -58,6 +62,23 @@ export async function setOrderStatus(orderId: number, status: OrderStatus): Prom
     const err = await res.json().catch(() => ({}))
     throw new Error((err as { detail?: string }).detail || 'Failed to set order status')
   }
+  return res.json()
+}
+
+export interface OrderStats {
+  total_count: number
+  total_count_delta_month: number
+  in_progress_count: number
+  waiting_payment_count: number
+  completed_count: number
+  completed_pct_month: number | null
+  profit_month: Record<string, string>
+  profit_month_delta_pct: number | null
+}
+
+export async function fetchOrderStats(): Promise<OrderStats> {
+  const res = await fetch('/api/orders/stats', { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch order stats')
   return res.json()
 }
 

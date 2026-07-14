@@ -141,7 +141,7 @@ export default function PaymentRequestDetailPanel({
           </div>
         )}
 
-        <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
           <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
             Товары
           </div>
@@ -154,7 +154,7 @@ export default function PaymentRequestDetailPanel({
           <SummaryRow label="Остаток" value={`${formatNumber(Number(request.remaining_amount))} ${request.currency}`} />
         </div>
 
-        <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
           <SummaryRow label="Приоритет" value={PRIORITY_LABELS[request.priority]} />
           <SummaryRow label="Реквизиты" value={request.requisites || '—'} />
           {request.details && (
@@ -163,7 +163,7 @@ export default function PaymentRequestDetailPanel({
         </div>
 
         {request.file_keys.length > 0 && (
-          <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+          <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
             <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
               Файлы
             </div>
@@ -200,7 +200,7 @@ export default function PaymentRequestDetailPanel({
         </div>
 
         {canEdit && Number(request.remaining_amount) > 0 && (
-          <div className="rounded-xl p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+          <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
             <div className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--color-muted)' }}>
               Внести оплату
             </div>
@@ -275,7 +275,7 @@ export default function PaymentRequestDetailPanel({
           </div>
         )}
 
-        <div className="rounded-xl p-4" style={{ background: 'var(--color-surface-2)' }}>
+        <div className="rounded-[8px] p-4" style={{ background: 'var(--color-surface-2)' }}>
           <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
             История оплат
           </div>

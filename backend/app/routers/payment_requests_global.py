@@ -2,7 +2,7 @@ from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -75,6 +75,7 @@ async def _to_summary_out(
 async def list_all_payment_requests(
     manager_id: int | None = Query(default=None),
     client_id: int | None = Query(default=None),
+    search: str | None = Query(default=None),
     sort: Literal["asc", "desc"] = Query(default="desc"),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -93,6 +94,9 @@ async def list_all_payment_requests(
         stmt = stmt.where(Order.manager_id == manager_id)
     if client_id is not None:
         stmt = stmt.where(Order.client_id == client_id)
+    if search:
+        like = f"%{search.strip()}%"
+        stmt = stmt.where(or_(Order.number.ilike(like), Client.full_name.ilike(like)))
 
     stmt = stmt.order_by(
         PaymentRequest.created_at.desc() if sort == "desc" else PaymentRequest.created_at.asc()

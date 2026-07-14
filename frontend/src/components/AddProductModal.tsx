@@ -48,7 +48,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-md rounded-[10px] p-6 max-h-[90vh] overflow-y-auto"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
       >
         <h3 className="text-base font-semibold mb-5" style={{ color: 'var(--color-text)' }}>
@@ -71,7 +71,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
         </label>
 
@@ -82,7 +82,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
             onChange={(e) => setDetails(e.target.value)}
             rows={2}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
         </label>
 
@@ -96,7 +96,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-              style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
             />
           </label>
 
@@ -109,7 +109,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-              style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
             />
           </label>
         </div>
@@ -120,7 +120,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           >
             {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -132,7 +132,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
             value={supplierId}
             onChange={(e) => setSupplierId(e.target.value ? Number(e.target.value) : '')}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           >
             <option value="">Выберите поставщика</option>
             {suppliers?.map((s) => (
@@ -142,7 +142,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
         </label>
 
         <div className="mb-6">
-          <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Фото (1 файл)</span>
+          <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Вложение (1 файл, любой формат)</span>
           <FileUploader
             files={photo ? [photo] : []}
             onUpload={(file) => setPhoto(file)}

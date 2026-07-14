@@ -92,7 +92,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-2xl p-6 max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-lg rounded-[10px] p-6 max-h-[90vh] overflow-y-auto"
         style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}
       >
         <h3 className="text-base font-semibold mb-5" style={{ color: 'var(--color-text)' }}>
@@ -117,7 +117,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
         )}
 
         {!loading && products && products.length > 0 && (
-          <div className="rounded-xl overflow-hidden mb-4" style={{ border: '1px solid var(--color-border)' }}>
+          <div className="rounded-[8px] overflow-hidden mb-4" style={{ border: '1px solid var(--color-border)' }}>
             {products.map((product) => {
               const remaining = remainingByProduct.get(product.id) ?? 0
               const disabled =
@@ -151,7 +151,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
                       value={amounts[product.id] ?? ''}
                       onChange={(e) => setAmounts((prev) => ({ ...prev, [product.id]: e.target.value }))}
                       className="w-24 rounded-lg px-2 py-1 text-sm text-right outline-none"
-                      style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+                      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                     />
                   )}
                 </label>
@@ -179,7 +179,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
             value={requisites}
             onChange={(e) => setRequisites(e.target.value)}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
         </label>
 
@@ -190,7 +190,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
             onChange={(e) => setDetails(e.target.value)}
             rows={2}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
         </label>
 
@@ -200,7 +200,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
             value={priority}
             onChange={(e) => setPriority(e.target.value as PaymentRequestPriority)}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--color-surface-2)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           >
             {(Object.keys(PRIORITY_LABELS) as PaymentRequestPriority[]).map((p) => (
               <option key={p} value={p}>{PRIORITY_LABELS[p]}</option>
