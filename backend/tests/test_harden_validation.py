@@ -111,14 +111,9 @@ def test_logistics_create_allows_null_exchange_rate():
     assert row.exchange_rate is None
 
 
-def test_client_rejects_code_over_db_limit():
-    with pytest.raises(ValidationError):
-        ClientCreate(code="x" * 21, full_name="Test Client")
-
-
 def test_client_rejects_full_name_over_db_limit():
     with pytest.raises(ValidationError):
-        ClientCreate(code="M1", full_name="x" * 256)
+        ClientCreate(full_name="x" * 256)
 
 
 def test_supplier_rejects_name_over_db_limit():

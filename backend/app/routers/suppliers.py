@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
+from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user, require_role
@@ -71,6 +72,22 @@ async def delete_supplier(
     supplier = result.scalar_one_or_none()
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
+
+    product_count = (await session.execute(
+        select(func.count()).select_from(Product).where(Product.supplier_id == supplier_id)
+    )).scalar_one()
+    if product_count > 0:
+        product_names = (await session.execute(
+            select(Product.name).where(Product.supplier_id == supplier_id).order_by(Product.id).limit(20)
+        )).scalars().all()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": f"Cannot delete supplier: {product_count} product(s) reference this supplier",
+                "product_count": product_count,
+                "product_names": product_names,
+            },
+        )
 
     await session.delete(supplier)
     await session.commit()

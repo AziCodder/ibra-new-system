@@ -1,5 +1,6 @@
 """Tests for order status transitions (ТЗ §13)."""
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -18,6 +19,7 @@ from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.orders import OrderStatusIn, set_order_status
+from app.services.order_metrics import snapshot_order_metrics
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -214,5 +216,31 @@ async def test_revert_completed_clears_completed_at():
             o = (await session.execute(select(Order).where(Order.id == order.id))).scalar_one()
         assert o.status == OrderStatus.in_progress
         assert o.completed_at is None
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_processing_days_freezes_at_completed_at_not_today():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        await _setup_ready_order(client, supplier, owner, admin, order, product)
+
+        async with async_session_factory() as session:
+            o = (await session.execute(select(Order).where(Order.id == order.id))).scalar_one()
+            o.created_at = datetime.now(UTC) - timedelta(days=10)
+            o.completed_at = datetime.now(UTC) - timedelta(days=3)
+            await session.commit()
+
+        # Recompute the snapshot again (this is what every GET /profit does after
+        # completion) — processing_days must stay pinned to completed_at, not grow
+        # with today's date.
+        async with async_session_factory() as session:
+            await snapshot_order_metrics(order.id, session)
+            await session.commit()
+
+        async with async_session_factory() as session:
+            o = (await session.execute(select(Order).where(Order.id == order.id))).scalar_one()
+            assert o.processing_days == 7
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])

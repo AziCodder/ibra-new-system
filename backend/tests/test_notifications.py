@@ -3,6 +3,7 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import delete, select
 
 from app.core.database import async_session_factory
@@ -12,6 +13,7 @@ from app.models.order import Order, OrderStatus
 from app.models.payment_request import PaymentRequest, PaymentRequestItem
 from app.models.product import Product
 from app.models.supplier import Supplier
+from app.models.telegram_group import ClientTelegramGroup, TelegramGroup
 from app.models.user import User, UserRole
 from app.routers.payment_requests import create_payment_request
 from app.schemas.payment_request import PaymentRequestCreate, PaymentRequestItemIn
@@ -147,4 +149,91 @@ async def test_create_payment_request_calls_notify_with_client_chat_and_order_de
             assert "urgent purchase" in message
             assert f"/orders/{order.id}" in message  # order link present
     finally:
+        await _cleanup(client.id, supplier.id, [owner.id])
+
+
+@pytest.mark.asyncio
+async def test_create_payment_request_requires_group_ids_when_client_has_multiple_groups():
+    client, supplier, owner, order, product = await _setup()
+    group_a_id = group_b_id = None
+    try:
+        async with async_session_factory() as session:
+            group_a = TelegramGroup(chat_id="-100903001", title="Group A")
+            group_b = TelegramGroup(chat_id="-100903002", title="Group B")
+            session.add_all([group_a, group_b])
+            await session.commit()
+            await session.refresh(group_a)
+            await session.refresh(group_b)
+            group_a_id, group_b_id = group_a.id, group_b.id
+            session.add(ClientTelegramGroup(client_id=client.id, group_id=group_a_id))
+            session.add(ClientTelegramGroup(client_id=client.id, group_id=group_b_id))
+            await session.commit()
+
+        async with async_session_factory() as session:
+            with patch("app.routers.payment_requests.notify") as mock_notify:
+                with pytest.raises(HTTPException) as exc_info:
+                    await create_payment_request(
+                        order.id,
+                        PaymentRequestCreate(
+                            requisites="bank details",
+                            items=[PaymentRequestItemIn(product_id=product.id, amount=Decimal("20.00"))],
+                        ),
+                        owner,
+                        session,
+                    )
+            assert exc_info.value.status_code == 422
+            mock_notify.assert_not_called()
+
+        async with async_session_factory() as session:
+            remaining = (
+                await session.execute(select(PaymentRequest).where(PaymentRequest.order_id == order.id))
+            ).scalars().all()
+            assert remaining == []  # nothing persisted — validated before the row was created
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(delete(ClientTelegramGroup).where(ClientTelegramGroup.client_id == client.id))
+            if group_a_id is not None:
+                await session.execute(delete(TelegramGroup).where(TelegramGroup.id.in_([group_a_id, group_b_id])))
+            await session.commit()
+        await _cleanup(client.id, supplier.id, [owner.id])
+
+
+@pytest.mark.asyncio
+async def test_create_payment_request_sends_to_all_chosen_groups():
+    client, supplier, owner, order, product = await _setup()
+    group_a_id = group_b_id = None
+    try:
+        async with async_session_factory() as session:
+            group_a = TelegramGroup(chat_id="-100904001", title="Group A")
+            group_b = TelegramGroup(chat_id="-100904002", title="Group B")
+            session.add_all([group_a, group_b])
+            await session.commit()
+            await session.refresh(group_a)
+            await session.refresh(group_b)
+            group_a_id, group_b_id = group_a.id, group_b.id
+            session.add(ClientTelegramGroup(client_id=client.id, group_id=group_a_id))
+            session.add(ClientTelegramGroup(client_id=client.id, group_id=group_b_id))
+            await session.commit()
+
+        async with async_session_factory() as session:
+            with patch("app.routers.payment_requests.notify") as mock_notify:
+                await create_payment_request(
+                    order.id,
+                    PaymentRequestCreate(
+                        requisites="bank details",
+                        items=[PaymentRequestItemIn(product_id=product.id, amount=Decimal("20.00"))],
+                        group_ids=[group_a_id, group_b_id],
+                    ),
+                    owner,
+                    session,
+                )
+            assert mock_notify.call_count == 2
+            targets = {call.args[0] for call in mock_notify.call_args_list}
+            assert targets == {"-100904001", "-100904002"}
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(delete(ClientTelegramGroup).where(ClientTelegramGroup.client_id == client.id))
+            if group_a_id is not None:
+                await session.execute(delete(TelegramGroup).where(TelegramGroup.id.in_([group_a_id, group_b_id])))
+            await session.commit()
         await _cleanup(client.id, supplier.id, [owner.id])

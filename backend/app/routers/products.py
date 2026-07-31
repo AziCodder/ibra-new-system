@@ -1,36 +1,37 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.models.order import Order
 from app.models.product import Product
 from app.models.supplier import Supplier
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.routers.auth import get_current_user
-from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
+from app.schemas.product import ProductCreate, ProductOut, ProductShipmentOut, ProductUpdate
+from app.services.logistics_validation import get_product_already_shipped
+from app.services.order_access import get_order_for_read as _get_order_for_read
+from app.services.order_access import get_order_for_write as _get_order_for_write
+from app.services.payment_request_validation import get_product_already_requested
 from app.services.product_dependencies import count_product_dependencies
+from app.services.product_logistics_summary import (
+    ProductLogisticsTotals,
+    get_products_logistics_totals,
+)
+from app.services.product_payment_summary import get_products_payment_totals
 
 router = APIRouter(prefix="/api/orders/{order_id}/products", tags=["products"])
 
 
-async def _get_order_for_read(order_id: int, user: User, session: AsyncSession) -> Order:
-    result = await session.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if user.role == UserRole.manager and order.manager_id != user.id:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
-
-
-async def _get_order_for_write(order_id: int, user: User, session: AsyncSession) -> Order:
-    if user.role == UserRole.observer:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    return await _get_order_for_read(order_id, user, session)
-
-
-def _to_product_out(product: Product, supplier_name: str) -> ProductOut:
+def _to_product_out(
+    product: Product,
+    supplier_name: str,
+    payment_totals: tuple[Decimal, Decimal] | None = None,
+    logistics_totals: ProductLogisticsTotals | None = None,
+) -> ProductOut:
+    requested_amount, paid_amount = payment_totals if payment_totals else (None, None)
+    logistics = logistics_totals or ProductLogisticsTotals()
     return ProductOut(
         id=product.id,
         order_id=product.order_id,
@@ -43,6 +44,19 @@ def _to_product_out(product: Product, supplier_name: str) -> ProductOut:
         currency=product.currency,
         photo_key=product.photo_key,
         created_at=product.created_at,
+        requested_amount=requested_amount,
+        paid_amount=paid_amount,
+        shipped_quantity=logistics.shipped_quantity,
+        accepted_quantity=logistics.accepted_quantity,
+        shipments=[
+            ProductShipmentOut(
+                id=shipment.id,
+                tracking=shipment.tracking,
+                quantity=shipment.quantity,
+                status=shipment.status,
+            )
+            for shipment in logistics.shipments
+        ],
     )
 
 
@@ -68,7 +82,19 @@ async def list_products(
         .where(Product.order_id == order_id)
         .order_by(Product.created_at)
     )
-    return [_to_product_out(product, supplier_name) for product, supplier_name in result.all()]
+    rows = result.all()
+    product_ids = [product.id for product, _ in rows]
+    payment_totals = await get_products_payment_totals(session, product_ids)
+    logistics_totals = await get_products_logistics_totals(session, product_ids)
+    return [
+        _to_product_out(
+            product,
+            supplier_name,
+            payment_totals.get(product.id),
+            logistics_totals.get(product.id),
+        )
+        for product, supplier_name in rows
+    ]
 
 
 @router.post("/", response_model=ProductOut, status_code=201)
@@ -78,8 +104,14 @@ async def create_product(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    await _get_order_for_write(order_id, user, session)
+    order = await _get_order_for_write(order_id, user, session)
     supplier = await _get_supplier_or_404(body.supplier_id, session)
+
+    if body.currency is not None and body.currency != order.currency:
+        raise HTTPException(
+            status_code=422,
+            detail="Product currency must match the order's currency",
+        )
 
     product = Product(
         order_id=order_id,
@@ -88,7 +120,7 @@ async def create_product(
         details=body.details,
         quantity=body.quantity,
         price=body.price,
-        currency=body.currency,
+        currency=order.currency,
         photo_key=body.photo_key,
     )
     session.add(product)
@@ -105,7 +137,7 @@ async def update_product(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    await _get_order_for_write(order_id, user, session)
+    order = await _get_order_for_write(order_id, user, session)
 
     result = await session.execute(select(Product).where(Product.id == product_id, Product.order_id == order_id))
     product = result.scalar_one_or_none()
@@ -115,6 +147,38 @@ async def update_product(
     updates = body.model_dump(exclude_unset=True)
     if "supplier_id" in updates:
         await _get_supplier_or_404(updates["supplier_id"], session)
+
+    if "quantity" in updates:
+        already_shipped = await get_product_already_shipped(session, product_id)
+        if updates["quantity"] < already_shipped:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot lower quantity below already-shipped amount ({already_shipped})",
+            )
+
+    if "quantity" in updates or "price" in updates:
+        already_requested = await get_product_already_requested(session, product_id)
+        new_quantity = updates.get("quantity", product.quantity)
+        new_price = updates.get("price", product.price)
+        if new_quantity * new_price < already_requested:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot lower total value below already-requested amount ({already_requested})",
+            )
+
+    if "currency" in updates and updates["currency"] != product.currency:
+        if updates["currency"] != order.currency:
+            raise HTTPException(
+                status_code=422,
+                detail="Product currency must match the order's currency",
+            )
+        already_requested = await get_product_already_requested(session, product_id)
+        if already_requested > 0:
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot change currency: product has existing payment requests",
+            )
+
     for field, value in updates.items():
         setattr(product, field, value)
 
@@ -122,7 +186,11 @@ async def update_product(
     await session.refresh(product)
 
     supplier = await _get_supplier_or_404(product.supplier_id, session)
-    return _to_product_out(product, supplier.name)
+    payment_totals = await get_products_payment_totals(session, [product.id])
+    logistics_totals = await get_products_logistics_totals(session, [product.id])
+    return _to_product_out(
+        product, supplier.name, payment_totals.get(product.id), logistics_totals.get(product.id)
+    )
 
 
 @router.delete("/{product_id}", status_code=204)

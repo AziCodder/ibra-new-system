@@ -35,6 +35,7 @@ export interface PaymentRequestCreate {
   priority?: PaymentRequestPriority
   file_keys?: string[]
   items: PaymentRequestItemIn[]
+  group_ids?: number[] | null
 }
 
 export async function fetchPaymentRequests(orderId: number): Promise<PaymentRequest[]> {

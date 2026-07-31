@@ -10,7 +10,7 @@ function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
 }
 
-export default function ProductsTable({ orderId, canEdit }: { orderId: number; canEdit: boolean }) {
+export default function ProductsTable({ orderId, orderCurrency, canEdit }: { orderId: number; orderCurrency: string; canEdit: boolean }) {
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null)
 
@@ -68,7 +68,7 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
       )}
 
       {!isLoading && products && products.length > 0 && (
-        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-border)' }}>
+        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)', boxShadow: 'var(--shadow-card)' }}>
           <table className="rtable w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -135,12 +135,13 @@ export default function ProductsTable({ orderId, canEdit }: { orderId: number; c
         </div>
       )}
 
-      {showAddModal && <AddProductModal orderId={orderId} onClose={() => setShowAddModal(false)} />}
+      {showAddModal && <AddProductModal orderId={orderId} orderCurrency={orderCurrency} onClose={() => setShowAddModal(false)} />}
 
       {selectedProduct && (
         <ProductDetailPanel
           key={selectedProduct.id}
           orderId={orderId}
+          orderCurrency={orderCurrency}
           product={selectedProduct}
           canEdit={canEdit}
           onClose={() => setSelectedProductId(null)}

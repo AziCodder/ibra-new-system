@@ -1,19 +1,35 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from app.core.currency import Currency
 from app.models.order import OrderStatus
+
+MAX_ORDER_FILES = 5
 
 
 class OrderCreate(BaseModel):
     client_id: int
-    currency: str = "USD"
+    currency: Currency = Currency.USD
     details: str = ""
+    manager_id: int | None = None
+    file_keys: list[str] = Field(default_factory=list, max_length=MAX_ORDER_FILES)
 
 
 class OrderUpdate(BaseModel):
     details: str
+    manager_id: int | None = None
+
+
+class OrderFileAdd(BaseModel):
+    file_key: str
+
+
+class OrderReorderIn(BaseModel):
+    """id заказов видимой страницы в новом (перетащенном) порядке."""
+
+    order_ids: list[int]
 
 
 class OrderOut(BaseModel):
@@ -24,8 +40,9 @@ class OrderOut(BaseModel):
     manager_id: int
     manager_name: str
     status: OrderStatus
-    currency: str
+    currency: Currency
     details: str
+    file_keys: list[str] = []
     created_at: datetime
     completed_at: datetime | None = None
     profit_pct: Decimal | None = None

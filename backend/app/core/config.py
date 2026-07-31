@@ -22,6 +22,20 @@ class Settings(BaseSettings):
     trusted_hosts: list[str] = []
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"
 
+    # Состояние системы (health-панель в админке). *_base — откуда бэкенд
+    # пробит фронт и сам себя (внутренние адреса compose-сети).
+    health_check_enabled: bool = True
+    health_frontend_base: str = "http://frontend:5173"
+    health_self_base: str = "http://localhost:8000"
+
+    # Логи процессов (реальные логи контейнеров, как `docker logs`). Бэкенд
+    # читает их через read-only docker-socket-proxy — сам docker.sock в API
+    # не монтируется. compose_project пустой = автоопределение своего проекта
+    # по метке com.docker.compose.project (чтобы не светить чужие контейнеры).
+    logs_viewer_enabled: bool = True
+    docker_proxy_url: str = "tcp://docker-socket-proxy:2375"
+    compose_project: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"

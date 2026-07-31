@@ -11,7 +11,7 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id"))
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"))
     supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"))
     name: Mapped[str] = mapped_column(String(255))
     details: Mapped[str] = mapped_column(Text, default="")

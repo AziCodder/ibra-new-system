@@ -100,7 +100,8 @@ async def test_delete_order_with_no_dependencies_removes_row():
 
 
 @pytest.mark.asyncio
-async def test_count_order_dependencies_counts_products():
+async def test_count_order_dependencies_ignores_products():
+    """Per ТЗ §6, товары alone don't block order deletion — only payments/requests/logistics/ledger entries do."""
     client, order = await _setup_order()
     try:
         async with async_session_factory() as session:
@@ -123,7 +124,7 @@ async def test_count_order_dependencies_counts_products():
 
         async with async_session_factory() as session:
             count = await count_order_dependencies(session, order.id)
-            assert count == 1
+            assert count == 0
     finally:
         await _cleanup(client.id)
         async with async_session_factory() as session:
@@ -132,37 +133,43 @@ async def test_count_order_dependencies_counts_products():
 
 
 @pytest.mark.asyncio
-async def test_delete_order_blocked_when_products_exist():
+async def test_delete_order_with_only_products_succeeds():
+    """A товар with no payment-request/logistics referencing it cascade-deletes with its order."""
     client, order = await _setup_order()
     try:
         async with async_session_factory() as session:
-            supplier = Supplier(name="Blocked Delete Supplier")
+            supplier = Supplier(name="Cascade Delete Supplier")
             session.add(supplier)
             await session.commit()
             await session.refresh(supplier)
 
-            session.add(
-                Product(
-                    order_id=order.id,
-                    supplier_id=supplier.id,
-                    name="Widget",
-                    quantity=Decimal("1"),
-                    price=Decimal("5.00"),
-                    currency="USD",
-                )
+            product = Product(
+                order_id=order.id,
+                supplier_id=supplier.id,
+                name="Widget",
+                quantity=Decimal("1"),
+                price=Decimal("5.00"),
+                currency="USD",
             )
+            session.add(product)
             await session.commit()
+            await session.refresh(product)
+            product_id = product.id
 
         async with async_session_factory() as session:
             admin_result = await session.execute(select(User).where(User.role == UserRole.admin).limit(1))
             admin = admin_result.scalar_one()
-            with pytest.raises(HTTPException) as exc_info:
-                await delete_order(order.id, admin, session)
-            assert exc_info.value.status_code == 409
+            await delete_order(order.id, admin, session)
+
+        async with async_session_factory() as session:
+            assert (await session.execute(select(Order).where(Order.id == order.id))).scalar_one_or_none() is None
+            assert (
+                await session.execute(select(Product).where(Product.id == product_id))
+            ).scalar_one_or_none() is None
     finally:
         await _cleanup(client.id)
         async with async_session_factory() as session:
-            await session.execute(delete(Supplier).where(Supplier.name == "Blocked Delete Supplier"))
+            await session.execute(delete(Supplier).where(Supplier.name == "Cascade Delete Supplier"))
             await session.commit()
 
 

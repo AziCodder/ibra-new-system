@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
 import { fetchAllLogistics, type LogisticsSummary, type LogisticsStatus } from '../api/logistics'
 import { fetchClients } from '../api/clients'
 import { fetchUsers } from '../api/users'
 import { useAuth } from '../contexts/AuthContext'
 import LogisticsDetailPanel from '../components/LogisticsDetailPanel'
+import CreateLogisticsFlow from '../components/CreateLogisticsFlow'
 import ErrorState from '../components/ErrorState'
 import Skeleton from '../components/Skeleton'
 import Tag, { type TagColor } from '../components/Tag'
@@ -38,6 +40,7 @@ export default function LogisticsPage() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<'asc' | 'desc'>('desc')
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
 
   const filters = {
     status: status || undefined,
@@ -84,6 +87,15 @@ export default function LogisticsPage() {
           placeholder="Поиск по трекингу, заказу, товару..."
           className="flex-1 sm:flex-initial sm:w-64"
         />
+        {(user?.role === 'admin' || user?.role === 'manager') && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 text-sm cursor-pointer flex-shrink-0"
+            style={{ height: 36, padding: '0 15px', background: 'var(--color-primary)', borderRadius: 'var(--radius)', color: '#fff' }}
+          >
+            <Plus size={15} /> Создать логистику
+          </button>
+        )}
       </PageHeader>
 
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center flex-wrap gap-3 mb-6">
@@ -149,7 +161,7 @@ export default function LogisticsPage() {
       {!isLoading && !isError && (!items || items.length === 0) && (
         <div
           className="rounded-[10px] p-12 text-center"
-          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)' }}
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)', boxShadow: 'var(--shadow-card)' }}
         >
           <div className="mb-3" style={{ color: 'var(--color-faint)' }}><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></div>
           <div className="text-sm" style={{ color: 'var(--color-muted)' }}>Логистики нет</div>
@@ -157,7 +169,7 @@ export default function LogisticsPage() {
       )}
 
       {!isLoading && items && items.length > 0 && (
-        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)' }}>
+        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)', boxShadow: 'var(--shadow-card)' }}>
           <table className="rtable w-full text-sm border-collapse">
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -229,6 +241,8 @@ export default function LogisticsPage() {
         </div>
       )}
 
+      {showCreate && <CreateLogisticsFlow onClose={() => setShowCreate(false)} />}
+
       {selected && (
         <LogisticsDetailPanel
           orderId={selected.order_id}
@@ -236,6 +250,7 @@ export default function LogisticsPage() {
           logistics={selected}
           canEdit={canEdit(selected)}
           isAdmin={isAdmin ?? false}
+          orderCurrency={selected.order_currency}
           onClose={() => setSelectedId(null)}
         />
       )}

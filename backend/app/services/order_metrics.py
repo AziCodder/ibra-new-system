@@ -31,8 +31,10 @@ async def snapshot_order_metrics(
     else:
         pct = Decimal("0")
 
+    end_date = order.completed_at.date() if order.completed_at else date.today()
+
     order.profit_pct = pct
-    order.processing_days = (date.today() - order.created_at.date()).days
+    order.processing_days = (end_date - order.created_at.date()).days
     order.total_income = breakdown.income.quantize(Decimal("0.01"))
     order.profit_amount = breakdown.profit.quantize(Decimal("0.01"))
     await session.flush()

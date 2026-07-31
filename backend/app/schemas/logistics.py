@@ -1,42 +1,60 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.core.currency import Currency
 from app.models.logistics import LogisticsStatus
+
+
+def _strip_tracking(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 class LogisticsCreate(BaseModel):
     product_id: int
-    quantity: Decimal = Field(gt=0)
-    tracking: str = ""
+    quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+    tracking: str | None = None
     ship_date: datetime
     invoice_file_key: str | None = None
     details: str = ""
     status: LogisticsStatus = LogisticsStatus.in_transit
     received_date: datetime | None = None
-    expense_amount: Decimal | None = None
-    currency: str | None = None
-    exchange_rate: Decimal | None = Field(default=None, gt=0)
+    expense_amount: Decimal | None = Field(default=None, max_digits=14, decimal_places=2)
+    currency: Currency | None = None
+    exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=6)
     acceptance_note: str | None = None
+
+    @field_validator("tracking")
+    @classmethod
+    def _validate_tracking(cls, value: str | None) -> str | None:
+        return _strip_tracking(value)
 
 
 class LogisticsUpdate(BaseModel):
     """Excludes receipt fields — those only change via accept/unaccept, atomically."""
 
-    quantity: Decimal | None = Field(default=None, gt=0)
+    quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
     tracking: str | None = None
     ship_date: datetime | None = None
     invoice_file_key: str | None = None
     details: str | None = None
     status: LogisticsStatus | None = None
 
+    @field_validator("tracking")
+    @classmethod
+    def _validate_tracking(cls, value: str | None) -> str | None:
+        return _strip_tracking(value)
+
 
 class LogisticsAccept(BaseModel):
     received_date: datetime
-    expense_amount: Decimal = Field(gt=0)
-    currency: str
-    exchange_rate: Decimal = Field(gt=0)
+    expense_amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    currency: Currency
+    exchange_rate: Decimal = Field(gt=0, max_digits=14, decimal_places=6)
     note: str = ""
 
 
@@ -48,14 +66,14 @@ class LogisticsOut(BaseModel):
     created_by_id: int
     created_by_name: str
     quantity: Decimal
-    tracking: str
+    tracking: str | None
     ship_date: datetime
     invoice_file_key: str | None
     details: str
     status: LogisticsStatus
     received_date: datetime | None
     expense_amount: Decimal | None
-    currency: str | None
+    currency: Currency | None
     exchange_rate: Decimal | None
     acceptance_note: str | None
     created_at: datetime
@@ -65,6 +83,11 @@ class LogisticsOut(BaseModel):
 
 class LogisticsSummaryOut(LogisticsOut):
     order_number: str
+    order_currency: Currency
     client_name: str
     manager_name: str
     manager_id: int
+
+
+class NotifyLogisticsReceivedIn(BaseModel):
+    group_ids: list[int] | None = None

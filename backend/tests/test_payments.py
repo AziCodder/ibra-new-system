@@ -199,6 +199,61 @@ async def test_manager_cannot_access_payments_on_other_managers_order():
 
 
 @pytest.mark.asyncio
+async def test_payment_exceeding_remaining_balance_is_rejected():
+    client, supplier, owner, other, observer, order, product, request = await _setup()
+    try:
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await create_payment(
+                    order.id,
+                    request.id,
+                    PaymentCreate(amount=Decimal("50000.00"), currency="USD", exchange_rate=Decimal("1")),
+                    owner,
+                    session,
+                )
+            assert exc_info.value.status_code == 422
+
+        async with async_session_factory() as session:
+            fetched = await get_payment_request(order.id, request.id, owner, session)
+            assert fetched.paid_amount == Decimal("0.00")
+            assert fetched.remaining_amount == Decimal("50.00")
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id])
+
+
+@pytest.mark.asyncio
+async def test_partial_payment_then_overpayment_of_remainder_is_rejected():
+    client, supplier, owner, other, observer, order, product, request = await _setup()
+    try:
+        async with async_session_factory() as session:
+            await create_payment(
+                order.id,
+                request.id,
+                PaymentCreate(amount=Decimal("20.00"), currency="USD", exchange_rate=Decimal("1")),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await create_payment(
+                    order.id,
+                    request.id,
+                    PaymentCreate(amount=Decimal("30.01"), currency="USD", exchange_rate=Decimal("1")),
+                    owner,
+                    session,
+                )
+            assert exc_info.value.status_code == 422
+
+        async with async_session_factory() as session:
+            fetched = await get_payment_request(order.id, request.id, owner, session)
+            assert fetched.paid_amount == Decimal("20.00")
+            assert fetched.remaining_amount == Decimal("30.00")
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id])
+
+
+@pytest.mark.asyncio
 async def test_observer_can_read_but_not_create_payment():
     client, supplier, owner, other, observer, order, product, request = await _setup()
     try:

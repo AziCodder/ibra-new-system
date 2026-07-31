@@ -18,4 +18,5 @@ class Payment(Base):
     exchange_rate: Mapped[Decimal] = mapped_column(Numeric(14, 6))
     file_key: Mapped[str | None] = mapped_column(String(255), default=None)
     note: Mapped[str] = mapped_column(Text, default="")
+    paid_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

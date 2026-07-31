@@ -1,7 +1,19 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { fetchOrders, fetchOrderStats, type OrderStatus } from '../api/orders'
+import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
+  fetchOrders,
+  fetchOrderStats,
+  reorderOrders,
+  type Order,
+  type OrderListResponse,
+  type OrderSortBy,
+  type OrderSortOrder,
+  type OrderStatus,
+} from '../api/orders'
 import { fetchClients } from '../api/clients'
 import CreateOrderModal from '../components/CreateOrderModal'
 import { useAuth } from '../contexts/AuthContext'
@@ -11,7 +23,40 @@ import Tag, { type TagColor } from '../components/Tag'
 import PageHeader from '../components/PageHeader'
 import SearchInput from '../components/SearchInput'
 import StatCard from '../components/StatCard'
+import { useToast } from '../components/Toast'
 import { Calendar, User, Plus } from 'lucide-react'
+
+const SORT_OPTIONS = [
+  { value: 'created_at:desc', label: 'Дата ↓ (новые)' },
+  { value: 'created_at:asc', label: 'Дата ↑ (старые)' },
+  { value: 'number:asc', label: 'Номер ↑ (А–Я)' },
+  { value: 'number:desc', label: 'Номер ↓ (Я–А)' },
+  { value: 'manual:asc', label: 'Вручную (перетаскивание)' },
+]
+
+const SORT_STORAGE_KEY = 'ibra_orders_sort'
+
+type SortState = { sortBy: OrderSortBy; sortOrder: OrderSortOrder }
+
+const DEFAULT_SORT: SortState = { sortBy: 'created_at', sortOrder: 'desc' }
+
+/** Выбранная сортировка живёт в localStorage — переживает перезагрузку страницы. */
+function readSortFromStorage(): SortState {
+  try {
+    const raw = localStorage.getItem(SORT_STORAGE_KEY)
+    if (!raw) return DEFAULT_SORT
+    const parsed = JSON.parse(raw) as SortState
+    if (
+      (parsed.sortBy === 'created_at' || parsed.sortBy === 'number' || parsed.sortBy === 'manual') &&
+      (parsed.sortOrder === 'asc' || parsed.sortOrder === 'desc')
+    ) {
+      return parsed
+    }
+  } catch {
+    /* повреждённое значение — берём порядок по умолчанию */
+  }
+  return DEFAULT_SORT
+}
 
 const CURRENCY_SYMBOL: Record<string, string> = { RUB: '₽', USD: '$', CNY: '¥', EUR: '€' }
 
@@ -108,7 +153,7 @@ function SegmentedFilter({
   )
 }
 
-function PaymentProgress({ order }: { order: import('../api/orders').Order }) {
+function PaymentProgress({ order }: { order: Order }) {
   if (order.requested_amount == null) {
     return <div className="text-xs" style={{ color: 'var(--color-faint)' }}>ждёт счёт</div>
   }
@@ -135,22 +180,24 @@ function PaymentProgress({ order }: { order: import('../api/orders').Order }) {
   )
 }
 
-function OrderCard({ order }: { order: import('../api/orders').Order }) {
+function OrderCard({ order }: { order: Order }) {
   const navigate = useNavigate()
   const badge = STATUS_BADGE[order.status]
   const date = new Date(order.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' })
 
   return (
+    // h-full + grid-auto-rows: 1fr у сетки => все карточки одной высоты
+    // независимо от длины описания и вида блока оплаты.
     <div
       onClick={() => navigate(`/orders/${order.id}`)}
-      className="rounded-[10px] p-4 flex flex-col gap-3 transition-transform cursor-pointer"
-      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)' }}
+      className="rounded-[10px] p-4 flex flex-col gap-3 transition-transform cursor-pointer h-full"
+      style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)', boxShadow: 'var(--shadow-card)' }}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-base font-extrabold" style={{ color: 'var(--color-primary)' }}>{order.number}</span>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-base font-extrabold truncate" style={{ color: 'var(--color-primary)' }}>{order.number}</span>
         <Tag color={badge.color}>{badge.label}</Tag>
       </div>
-      <div className="text-sm font-bold" style={{ color: 'var(--color-text)' }}>{order.client_name}</div>
+      <div className="text-sm font-bold line-clamp-2" style={{ color: 'var(--color-text)' }}>{order.client_name}</div>
       <div className="flex items-center gap-2 text-xs flex-wrap" style={{ color: 'var(--color-muted)' }}>
         <span className="flex items-center gap-1"><Calendar size={12} /> {date}</span>
         <span>·</span>
@@ -161,11 +208,56 @@ function OrderCard({ order }: { order: import('../api/orders').Order }) {
       {order.details && (
         <>
           <div style={{ height: 1, background: 'var(--color-border)' }} />
-          <div className="text-xs" style={{ color: 'var(--color-muted)' }}>{order.details}</div>
+          <div className="text-xs line-clamp-2" style={{ color: 'var(--color-muted)' }}>{order.details}</div>
         </>
       )}
-      <div style={{ height: 1, background: 'var(--color-border)' }} />
-      <PaymentProgress order={order} />
+      {/* Блок оплаты прижат к низу, слот фиксированной высоты — разделители
+          и суммы стоят на одной линии во всех карточках. */}
+      <div className="mt-auto flex flex-col gap-3">
+        <div style={{ height: 1, background: 'var(--color-border)' }} />
+        <div className="flex flex-col justify-end" style={{ minHeight: 28 }}>
+          <PaymentProgress order={order} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Карточка заказа с перетаскиванием (активация — удержание ~0.5 с). */
+function SortableOrderCard({ order }: { order: Order }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: order.id })
+  // После перетаскивания браузер всё равно шлёт click — он открыл бы заказ.
+  const draggedRef = useRef(false)
+
+  useEffect(() => {
+    if (isDragging) draggedRef.current = true
+  }, [isDragging])
+
+  const style: CSSProperties = {
+    transform: isDragging ? `${CSS.Transform.toString(transform)} scale(1.03)` : CSS.Transform.toString(transform),
+    transition,
+    touchAction: 'manipulation',
+    cursor: 'grab',
+    height: '100%',
+    ...(isDragging ? { opacity: 0.6, zIndex: 999, position: 'relative' } : {}),
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onPointerDownCapture={() => { draggedRef.current = false }}
+      onClickCapture={(e) => {
+        if (draggedRef.current) {
+          draggedRef.current = false
+          e.preventDefault()
+          e.stopPropagation()
+        }
+      }}
+    >
+      <OrderCard order={order} />
     </div>
   )
 }
@@ -176,25 +268,37 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
+  const [sort, setSort] = useState<SortState>(readSortFromStorage)
   const pageSize = 12
   const { user } = useAuth()
   const canCreate = user?.role !== 'observer'
+  const queryClient = useQueryClient()
+  const showToast = useToast()
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
 
+  const queryKey = ['orders', statusFilter, clientId, search, page, sort.sortBy, sort.sortOrder]
+
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['orders', statusFilter, clientId, search, page],
+    queryKey,
     queryFn: () =>
       fetchOrders({
         status: statusFilter === 'all' ? undefined : statusFilter,
         client_id: clientId,
         search: search || undefined,
+        sort_by: sort.sortBy,
+        sort_order: sort.sortOrder,
         page,
         page_size: pageSize,
       }),
   })
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / pageSize)) : 1
+
+  // Перетаскивание — только в режиме «Вручную». Карточка открывается по клику,
+  // поэтому drag начинается после удержания ~0.5 с, а не с первого движения.
+  const isManual = sort.sortBy === 'manual'
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { delay: 500, tolerance: 8 } }))
 
   function selectStatus(key: OrderStatus | 'all') {
     setStatusFilter(key)
@@ -204,6 +308,37 @@ export default function OrdersPage() {
   function selectSearch(v: string) {
     setSearch(v)
     setPage(1)
+  }
+
+  function selectSort(value: string) {
+    const [sortBy, sortOrder] = value.split(':') as [OrderSortBy, OrderSortOrder]
+    const next = { sortBy, sortOrder }
+    setSort(next)
+    localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(next))
+    setPage(1)
+  }
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const current = data?.items ?? []
+    const oldIndex = current.findIndex((o) => o.id === active.id)
+    const newIndex = current.findIndex((o) => o.id === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const previous = data
+    const next = arrayMove(current, oldIndex, newIndex)
+    // Оптимистично показываем новый порядок, при ошибке откатываем.
+    queryClient.setQueryData<OrderListResponse>(queryKey, (old) => (old ? { ...old, items: next } : old))
+
+    try {
+      await reorderOrders(next.map((o) => o.id))
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
+    } catch (err) {
+      queryClient.setQueryData(queryKey, previous)
+      showToast(err instanceof Error ? err.message : 'Не удалось изменить порядок заказов', 'error')
+    }
   }
 
   return (
@@ -231,12 +366,24 @@ export default function OrdersPage() {
         <select
           value={clientId ?? ''}
           onChange={(e) => { setClientId(e.target.value ? Number(e.target.value) : undefined); setPage(1) }}
-          className="text-sm outline-none px-3"
+          className="text-sm outline-none px-3 w-full sm:w-auto"
           style={{ height: 32, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', color: 'var(--color-text)' }}
         >
           <option value="">Клиент: все</option>
           {clients?.map((c) => (
             <option key={c.id} value={c.id}>{c.code} — {c.full_name}</option>
+          ))}
+        </select>
+
+        <select
+          value={`${sort.sortBy}:${sort.sortOrder}`}
+          onChange={(e) => selectSort(e.target.value)}
+          aria-label="Сортировка заказов"
+          className="text-sm outline-none px-3 w-full sm:w-auto"
+          style={{ height: 32, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', color: 'var(--color-text)' }}
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
 
@@ -258,10 +405,23 @@ export default function OrdersPage() {
         >
           Заказов не найдено
         </div>
+      ) : isManual ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={data.items.map((o) => o.id)} strategy={rectSortingStrategy}>
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gridAutoRows: '1fr' }}
+            >
+              {data.items.map((order) => (
+                <SortableOrderCard key={order.id} order={order} />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       ) : (
         <div
           className="grid gap-4"
-          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gridAutoRows: '1fr' }}
         >
           {data.items.map((order) => (
             <OrderCard key={order.id} order={order} />

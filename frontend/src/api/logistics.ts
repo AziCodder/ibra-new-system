@@ -66,6 +66,7 @@ async function handle<T>(res: Response, fallback: string): Promise<T> {
 
 export interface LogisticsSummary extends Logistics {
   order_number: string
+  order_currency: string
   client_name: string
   manager_name: string
   manager_id: number
@@ -142,13 +143,36 @@ export async function unacceptLogistics(orderId: number, logisticsId: number): P
   return handle(res, 'Failed to unaccept logistics')
 }
 
-export async function notifyLogisticsReceived(orderId: number, logisticsId: number): Promise<void> {
+export interface TelegramGroupOut {
+  group_id: number
+  chat_id: string
+  title: string
+}
+
+export class AmbiguousGroupsError extends Error {
+  availableGroups: TelegramGroupOut[]
+  constructor(availableGroups: TelegramGroupOut[]) {
+    super('Ambiguous notification target: choose one or more groups')
+    this.availableGroups = availableGroups
+  }
+}
+
+export async function notifyLogisticsReceived(
+  orderId: number,
+  logisticsId: number,
+  groupIds?: number[],
+): Promise<void> {
   const res = await fetch(`/api/orders/${orderId}/logistics/${logisticsId}/notify-received`, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
+    body: JSON.stringify({ group_ids: groupIds ?? null }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
+    if (res.status === 409 && err.detail?.available_groups) {
+      throw new AmbiguousGroupsError(err.detail.available_groups)
+    }
     throw new Error(err.detail || 'Failed to send notification')
   }
 }

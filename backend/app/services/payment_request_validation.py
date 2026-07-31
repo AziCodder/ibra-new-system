@@ -16,6 +16,22 @@ class PaymentRequestValidationError(Exception):
     """
 
 
+async def get_product_already_requested(
+    session: AsyncSession, product_id: int, exclude_request_id: int | None = None
+) -> Decimal:
+    """Sum of payment-request-item amounts already committed against a product.
+
+    `exclude_request_id` lets an in-progress edit of an existing request
+    re-validate without double-counting its own already-saved items.
+    """
+    requested_query = select(func.coalesce(func.sum(PaymentRequestItem.amount), 0)).where(
+        PaymentRequestItem.product_id == product_id
+    )
+    if exclude_request_id is not None:
+        requested_query = requested_query.where(PaymentRequestItem.payment_request_id != exclude_request_id)
+    return (await session.execute(requested_query)).scalar_one()
+
+
 async def get_product_remaining(
     session: AsyncSession, product_id: int, exclude_request_id: int | None = None
 ) -> Decimal:
@@ -24,16 +40,15 @@ async def get_product_remaining(
     `exclude_request_id` lets an in-progress edit of an existing request
     re-validate without double-counting its own already-saved items.
     """
-    product = (await session.execute(select(Product).where(Product.id == product_id))).scalar_one()
+    # Locks the product row until the caller's transaction commits — prevents two
+    # concurrent payment requests against the same product from both reading the
+    # same "remaining" value and jointly overcommitting it.
+    product = (
+        await session.execute(select(Product).where(Product.id == product_id).with_for_update())
+    ).scalar_one()
     total = product.quantity * product.price
 
-    requested_query = select(func.coalesce(func.sum(PaymentRequestItem.amount), 0)).where(
-        PaymentRequestItem.product_id == product_id
-    )
-    if exclude_request_id is not None:
-        requested_query = requested_query.where(PaymentRequestItem.payment_request_id != exclude_request_id)
-    already_requested = (await session.execute(requested_query)).scalar_one()
-
+    already_requested = await get_product_already_requested(session, product_id, exclude_request_id)
     return total - already_requested
 
 

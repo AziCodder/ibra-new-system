@@ -8,11 +8,14 @@ import {
   notifyLogisticsReceived,
   fetchLogisticsComments,
   createLogisticsComment,
+  AmbiguousGroupsError,
   type Logistics,
   type LogisticsStatus,
+  type TelegramGroupOut,
 } from '../api/logistics'
 import FileUploader, { type UploadedFile } from './FileUploader'
 import Tag, { type TagColor } from './Tag'
+import TelegramGroupPicker from './TelegramGroupPicker'
 
 const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
 
@@ -51,6 +54,7 @@ export default function LogisticsDetailPanel({
   logistics,
   canEdit,
   isAdmin,
+  orderCurrency,
   onClose,
 }: {
   orderId: number
@@ -58,6 +62,7 @@ export default function LogisticsDetailPanel({
   logistics: Logistics
   canEdit: boolean
   isAdmin: boolean
+  orderCurrency: string
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -78,7 +83,7 @@ export default function LogisticsDetailPanel({
 
   const [receivedDate, setReceivedDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [expenseAmount, setExpenseAmount] = useState('')
-  const [acceptCurrency, setAcceptCurrency] = useState(logistics.currency ?? 'USD')
+  const [acceptCurrency, setAcceptCurrency] = useState(logistics.currency ?? orderCurrency)
   const [exchangeRate, setExchangeRate] = useState('1')
   const [acceptNote, setAcceptNote] = useState('')
 
@@ -86,6 +91,13 @@ export default function LogisticsDetailPanel({
     queryKey: ['logistics-comments', orderId, logistics.id],
     queryFn: () => fetchLogisticsComments(orderId, logistics.id),
   })
+
+  /** Products carry the shipped/accepted rollup, so they go stale on every shipment change. */
+  function invalidateLogistics() {
+    queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
+    queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
+    queryClient.invalidateQueries({ queryKey: ['products', orderId] })
+  }
 
   const updateMutation = useMutation({
     mutationFn: () =>
@@ -98,8 +110,7 @@ export default function LogisticsDetailPanel({
         status: editStatus,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
-      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
+      invalidateLogistics()
       setIsEditing(false)
     },
     onError: (err: Error) => setError(err.message),
@@ -108,8 +119,7 @@ export default function LogisticsDetailPanel({
   const deleteMutation = useMutation({
     mutationFn: () => deleteLogistics(orderId, logistics.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
-      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
+      invalidateLogistics()
       onClose()
     },
     onError: (err: Error) => setError(err.message),
@@ -125,8 +135,7 @@ export default function LogisticsDetailPanel({
         note: acceptNote,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
-      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
+      invalidateLogistics()
       setIsAccepting(false)
     },
     onError: (err: Error) => setError(err.message),
@@ -135,16 +144,30 @@ export default function LogisticsDetailPanel({
   const unacceptMutation = useMutation({
     mutationFn: () => unacceptLogistics(orderId, logistics.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
-      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
+      invalidateLogistics()
     },
     onError: (err: Error) => setError(err.message),
   })
 
+  const [pendingGroups, setPendingGroups] = useState<TelegramGroupOut[] | null>(null)
+  const [notifyGroupIds, setNotifyGroupIds] = useState<number[]>([])
+
   const notifyMutation = useMutation({
-    mutationFn: () => notifyLogisticsReceived(orderId, logistics.id),
-    onError: (err: Error) => setError(err.message),
+    mutationFn: (groupIds?: number[]) => notifyLogisticsReceived(orderId, logistics.id, groupIds),
+    onSuccess: () => setPendingGroups(null),
+    onError: (err: Error) => {
+      if (err instanceof AmbiguousGroupsError) {
+        setPendingGroups(err.availableGroups)
+        setNotifyGroupIds([])
+      } else {
+        setError(err.message)
+      }
+    },
   })
+
+  function toggleNotifyGroup(groupId: number) {
+    setNotifyGroupIds((prev) => (prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]))
+  }
 
   const commentMutation = useMutation({
     mutationFn: () => createLogisticsComment(orderId, logistics.id, commentText),
@@ -168,7 +191,11 @@ export default function LogisticsDetailPanel({
   }
 
   function handleNotify() {
-    notifyMutation.mutate()
+    notifyMutation.mutate(undefined)
+  }
+
+  function handleConfirmNotifyGroups() {
+    notifyMutation.mutate(notifyGroupIds)
   }
 
   async function handleCopy() {
@@ -408,6 +435,32 @@ export default function LogisticsDetailPanel({
                 {unacceptMutation.isPending ? 'Распринятие...' : 'Распринять'}
               </button>
             )}
+          </div>
+        )}
+
+        {pendingGroups && (
+          <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
+            <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
+              Клиент привязан к нескольким группам — выберите, куда отправить уведомление
+            </span>
+            <TelegramGroupPicker groups={pendingGroups} selected={notifyGroupIds} onToggle={toggleNotifyGroup} />
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={handleConfirmNotifyGroups}
+                disabled={notifyGroupIds.length === 0 || notifyMutation.isPending}
+                className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ background: 'var(--color-primary)', color: '#fff' }}
+              >
+                {notifyMutation.isPending ? 'Отправка...' : 'Отправить'}
+              </button>
+              <button
+                onClick={() => setPendingGroups(null)}
+                className="rounded-lg px-4 py-2 text-sm cursor-pointer"
+                style={{ background: 'var(--color-surface-3)', color: 'var(--color-text)' }}
+              >
+                Отмена
+              </button>
+            </div>
           </div>
         )}
 

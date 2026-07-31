@@ -133,14 +133,14 @@ async def test_count_order_dependencies_counts_payment_requests():
     try:
         async with async_session_factory() as session:
             count = await count_order_dependencies(session, order.id)
-            assert count == 1  # the product itself
+            assert count == 0  # a bare product doesn't block deletion (ТЗ §6)
 
             session.add(PaymentRequest(order_id=order.id, created_by_id=admin.id))
             await session.commit()
 
         async with async_session_factory() as session:
             count = await count_order_dependencies(session, order.id)
-            assert count == 2  # product + payment request
+            assert count == 1  # payment request
     finally:
         await _cleanup(client.id, supplier.id)
 

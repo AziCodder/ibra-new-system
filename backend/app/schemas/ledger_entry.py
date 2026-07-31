@@ -3,14 +3,15 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.core.currency import Currency
 from app.models.ledger_entry import LedgerEntryType
 
 
 class LedgerEntryCreate(BaseModel):
     type: LedgerEntryType
-    amount: Decimal = Field(gt=0)
-    currency: str
-    exchange_rate: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    currency: Currency
+    exchange_rate: Decimal = Field(gt=0, max_digits=14, decimal_places=6)
     details: str = ""
 
 
@@ -21,7 +22,7 @@ class LedgerEntryOut(BaseModel):
     author_name: str
     type: LedgerEntryType
     amount: Decimal
-    currency: str
+    currency: Currency
     exchange_rate: Decimal
     details: str
     created_at: datetime

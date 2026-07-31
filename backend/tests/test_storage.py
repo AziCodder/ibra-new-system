@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.storage import LocalStorage, StorageError
+from app.services.storage import CONTEXT_MAX_SIZES, LocalStorage, StorageError
 
 
 @pytest.fixture
@@ -35,3 +35,24 @@ async def test_reject_oversized_file(storage):
     big = b"x" * (21 * 1024 * 1024)
     with pytest.raises(StorageError, match="limit"):
         await storage.save("big.pdf", big)
+
+
+@pytest.mark.asyncio
+async def test_order_context_rejects_file_over_3mb(storage):
+    over_limit = b"x" * (CONTEXT_MAX_SIZES["order"] + 1)
+    with pytest.raises(StorageError, match="3MB limit"):
+        await storage.save("big.pdf", over_limit, max_size=CONTEXT_MAX_SIZES["order"])
+
+
+@pytest.mark.asyncio
+async def test_order_context_accepts_file_at_3mb(storage):
+    at_limit = b"x" * CONTEXT_MAX_SIZES["order"]
+    key = await storage.save("ok.pdf", at_limit, max_size=CONTEXT_MAX_SIZES["order"])
+    assert key.endswith(".pdf")
+
+
+@pytest.mark.asyncio
+async def test_payment_request_context_rejects_file_over_5mb(storage):
+    over_limit = b"x" * (CONTEXT_MAX_SIZES["payment_request"] + 1)
+    with pytest.raises(StorageError, match="5MB limit"):
+        await storage.save("big.pdf", over_limit, max_size=CONTEXT_MAX_SIZES["payment_request"])

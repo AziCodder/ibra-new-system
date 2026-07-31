@@ -3,24 +3,39 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { createOrder } from '../api/orders'
 import { fetchClients } from '../api/clients'
+import { fetchUsers } from '../api/users'
 import { useAuth } from '../contexts/AuthContext'
+import FileUploader, { type UploadedFile } from './FileUploader'
 
 const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
+const MAX_ORDER_FILES = 5
 
 export default function CreateOrderModal({ onClose }: { onClose: () => void }) {
   const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const isAdmin = user?.role === 'admin'
 
   const [clientId, setClientId] = useState<number | ''>('')
   const [currency, setCurrency] = useState('USD')
   const [details, setDetails] = useState('')
+  const [managerId, setManagerId] = useState<number | ''>('')
+  const [files, setFiles] = useState<UploadedFile[]>([])
   const [error, setError] = useState('')
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
+  const { data: users } = useQuery({ queryKey: ['users'], queryFn: fetchUsers, enabled: isAdmin })
+  const assignableManagers = users?.filter((u) => u.role === 'admin' || u.role === 'manager')
 
   const mutation = useMutation({
-    mutationFn: () => createOrder({ client_id: Number(clientId), currency, details }),
+    mutationFn: () =>
+      createOrder({
+        client_id: Number(clientId),
+        currency,
+        details,
+        file_keys: files.map((f) => f.key),
+        ...(isAdmin && managerId ? { manager_id: Number(managerId) } : {}),
+      }),
     onSuccess: (order) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] })
       navigate(`/orders/${order.id}`)
@@ -90,10 +105,38 @@ export default function CreateOrderModal({ onClose }: { onClose: () => void }) {
           />
         </label>
 
-        <div className="flex items-center justify-between mb-6 text-xs" style={{ color: 'var(--color-muted)' }}>
-          <span>Менеджер</span>
-          <span style={{ color: 'var(--color-text)' }}>{user?.full_name || user?.login}</span>
+        <div className="mb-4">
+          <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Файлы (до {MAX_ORDER_FILES})</span>
+          <FileUploader
+            files={files}
+            context="order"
+            disabled={files.length >= MAX_ORDER_FILES}
+            onUpload={(file) => setFiles((prev) => (prev.length >= MAX_ORDER_FILES ? prev : [...prev, file]))}
+            onRemove={(key) => setFiles((prev) => prev.filter((f) => f.key !== key))}
+          />
         </div>
+
+        {isAdmin ? (
+          <label className="block mb-6">
+            <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Менеджер</span>
+            <select
+              value={managerId}
+              onChange={(e) => setManagerId(e.target.value ? Number(e.target.value) : '')}
+              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            >
+              <option value="">Я ({user?.full_name || user?.login})</option>
+              {assignableManagers?.filter((u) => u.id !== user?.id).map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name || u.login}</option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <div className="flex items-center justify-between mb-6 text-xs" style={{ color: 'var(--color-muted)' }}>
+            <span>Менеджер</span>
+            <span style={{ color: 'var(--color-text)' }}>{user?.full_name || user?.login}</span>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2">
           <button

@@ -52,6 +52,9 @@ export default function CreateLogisticsModal({ orderId, onClose }: { orderId: nu
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['logistics', orderId] })
+      queryClient.invalidateQueries({ queryKey: ['all-logistics'] })
+      // Products carry the shipped/accepted rollup shown on the product card.
+      queryClient.invalidateQueries({ queryKey: ['products', orderId] })
       onClose()
     },
     onError: (err: Error) => setError(err.message),

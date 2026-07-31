@@ -31,11 +31,29 @@ services:
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost}
       UPLOAD_DIR: /var/lib/ibra/uploads
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      HEALTH_FRONTEND_BASE: http://frontend:80
     volumes:
       - uploads:/var/lib/ibra/uploads
     depends_on:
       db:
         condition: service_healthy
+      docker-socket-proxy:
+        condition: service_started
+
+  # Read-only прокси к Docker API — даёт админке («Логи процессов») доступ к
+  # РЕАЛЬНЫМ логам контейнеров (`docker logs`), не монтируя docker.sock в сам
+  # backend. Разрешены только GET /containers/json и /containers/{id}/logs
+  # (CONTAINERS + LOGS), всё остальное (POST, exec, images, …) запрещено.
+  # Наружу порт не публикуется — доступен лишь из compose-сети.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      LOGS: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   frontend:
     build:

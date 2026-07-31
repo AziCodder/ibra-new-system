@@ -93,7 +93,7 @@ async def test_count_order_dependencies_counts_logistics():
     try:
         async with async_session_factory() as session:
             count = await count_order_dependencies(session, order.id)
-            assert count == 1  # the product itself
+            assert count == 0  # a bare product doesn't block deletion (ТЗ §6)
 
             session.add(
                 Logistics(
@@ -108,7 +108,7 @@ async def test_count_order_dependencies_counts_logistics():
 
         async with async_session_factory() as session:
             count = await count_order_dependencies(session, order.id)
-            assert count == 2  # product + logistics
+            assert count == 1  # logistics
     finally:
         await _cleanup(client.id, supplier.id)
 

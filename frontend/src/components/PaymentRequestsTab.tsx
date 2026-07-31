@@ -16,12 +16,12 @@ function formatNumber(value: number): string {
 
 export default function PaymentRequestsTab({
   orderId,
+  clientId,
   canEdit,
-  orderCurrency,
 }: {
   orderId: number
+  clientId: number
   canEdit: boolean
-  orderCurrency: string
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null)
@@ -79,7 +79,7 @@ export default function PaymentRequestsTab({
                 key={request.id}
                 onClick={() => setSelectedRequestId(request.id)}
                 className="rounded-[10px] p-4 cursor-pointer"
-                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)' }}
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)', boxShadow: 'var(--shadow-card)' }}
               >
                 <div className="flex items-center justify-between mb-3">
                   <Tag color="default">{request.currency}</Tag>
@@ -96,7 +96,7 @@ export default function PaymentRequestsTab({
                   <div className="flex justify-between" style={{ color: 'var(--color-muted)' }}>
                     <span>Оплачено</span>
                     <span style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatNumber(paid)} {orderCurrency}
+                      {formatNumber(paid)} {request.currency}
                     </span>
                   </div>
                   <div className="flex justify-between" style={{ color: 'var(--color-muted)' }}>
@@ -122,14 +122,15 @@ export default function PaymentRequestsTab({
         </div>
       )}
 
-      {showCreateModal && <CreatePaymentRequestModal orderId={orderId} onClose={() => setShowCreateModal(false)} />}
+      {showCreateModal && (
+        <CreatePaymentRequestModal orderId={orderId} clientId={clientId} onClose={() => setShowCreateModal(false)} />
+      )}
 
       {selectedRequest && (
         <PaymentRequestDetailPanel
           orderId={orderId}
           request={selectedRequest}
           canEdit={canEdit}
-          orderCurrency={orderCurrency}
           onClose={() => setSelectedRequestId(null)}
         />
       )}

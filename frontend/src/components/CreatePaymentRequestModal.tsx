@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchProducts } from '../api/products'
 import { fetchPaymentRequests, createPaymentRequest, type PaymentRequestPriority } from '../api/paymentRequests'
+import { fetchClientTelegramGroups } from '../api/clients'
 import FileUploader, { type UploadedFile } from './FileUploader'
+import TelegramGroupPicker from './TelegramGroupPicker'
 
 const MAX_FILES = 3
 
@@ -16,7 +18,15 @@ function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
 }
 
-export default function CreatePaymentRequestModal({ orderId, onClose }: { orderId: number; onClose: () => void }) {
+export default function CreatePaymentRequestModal({
+  orderId,
+  clientId,
+  onClose,
+}: {
+  orderId: number
+  clientId: number
+  onClose: () => void
+}) {
   const queryClient = useQueryClient()
 
   const [selected, setSelected] = useState<Record<number, boolean>>({})
@@ -25,6 +35,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
   const [details, setDetails] = useState('')
   const [priority, setPriority] = useState<PaymentRequestPriority>('normal')
   const [files, setFiles] = useState<UploadedFile[]>([])
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([])
   const [error, setError] = useState('')
 
   const { data: products, isLoading: productsLoading } = useQuery({
@@ -35,6 +46,15 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
     queryKey: ['payment-requests', orderId],
     queryFn: () => fetchPaymentRequests(orderId),
   })
+  const { data: telegramGroups } = useQuery({
+    queryKey: ['client-telegram-groups', clientId],
+    queryFn: () => fetchClientTelegramGroups(clientId),
+  })
+  const needsGroupChoice = (telegramGroups?.length ?? 0) > 1
+
+  function toggleGroup(groupId: number) {
+    setSelectedGroupIds((prev) => (prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]))
+  }
 
   const loading = productsLoading || requestsLoading
 
@@ -70,6 +90,7 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
         priority,
         file_keys: files.map((f) => f.key),
         items: selectedIds.map((id) => ({ product_id: id, amount: Number(amounts[id]) })),
+        group_ids: needsGroupChoice ? selectedGroupIds : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payment-requests', orderId] })
@@ -82,7 +103,8 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
   const canSave =
     selectedIds.length > 0 &&
     selectedIds.every((id) => Number(amounts[id]) > 0) &&
-    requisites.trim() !== ''
+    requisites.trim() !== '' &&
+    (!needsGroupChoice || selectedGroupIds.length > 0)
 
   return (
     <div
@@ -208,10 +230,20 @@ export default function CreatePaymentRequestModal({ orderId, onClose }: { orderI
           </select>
         </label>
 
+        {needsGroupChoice && (
+          <div className="mb-4">
+            <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
+              Куда отправить уведомление (клиент привязан к нескольким группам)
+            </span>
+            <TelegramGroupPicker groups={telegramGroups ?? []} selected={selectedGroupIds} onToggle={toggleGroup} />
+          </div>
+        )}
+
         <div className="mb-6">
           <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Файлы (до {MAX_FILES})</span>
           <FileUploader
             files={files}
+            context="payment_request"
             disabled={files.length >= MAX_FILES}
             onUpload={(file) => setFiles((prev) => (prev.length >= MAX_FILES ? prev : [...prev, file]))}
             onRemove={(key) => setFiles((prev) => prev.filter((f) => f.key !== key))}

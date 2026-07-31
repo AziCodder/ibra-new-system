@@ -32,11 +32,13 @@ export default function LogisticsTab({
   orderNumber,
   canEdit,
   isAdmin,
+  orderCurrency,
 }: {
   orderId: number
   orderNumber: string
   canEdit: boolean
   isAdmin: boolean
+  orderCurrency: string
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -84,7 +86,7 @@ export default function LogisticsTab({
       )}
 
       {!isLoading && !isError && logisticsList && logisticsList.length > 0 && (
-        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)' }}>
+        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)', boxShadow: 'var(--shadow-card)' }}>
           <table className="rtable w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -141,6 +143,7 @@ export default function LogisticsTab({
           logistics={selected}
           canEdit={canEdit}
           isAdmin={isAdmin}
+          orderCurrency={orderCurrency}
           onClose={() => setSelectedId(null)}
         />
       )}

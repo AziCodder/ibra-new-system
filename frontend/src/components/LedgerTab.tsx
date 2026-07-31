@@ -98,7 +98,7 @@ export default function LedgerTab({
       )}
 
       {!isLoading && !isError && entries && entries.length > 0 && (
-        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)' }}>
+        <div className="rounded-[10px] overflow-x-auto" style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)', boxShadow: 'var(--shadow-card)' }}>
           <table className="rtable w-full text-sm" style={{ borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--color-surface-2)' }}>
@@ -128,7 +128,9 @@ export default function LedgerTab({
                     </td>
                     <td className="px-4 py-2.5" data-label="Валюта" style={{ color: 'var(--color-text)' }}>{entry.currency}</td>
                     <td className="px-4 py-2.5 text-right" data-label="Курс" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
-                      {entry.exchange_rate}
+                      {entry.currency === orderCurrency
+                        ? entry.exchange_rate
+                        : `1 ${entry.currency} = ${entry.exchange_rate} ${orderCurrency}`}
                     </td>
                     <td className="px-4 py-2.5 text-right" data-label="Дата" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatDate(entry.created_at)}
@@ -166,6 +168,7 @@ export default function LedgerTab({
           orderId={orderId}
           entry={selected}
           canEdit={canEdit}
+          orderCurrency={orderCurrency}
           onClose={() => setSelectedId(null)}
         />
       )}

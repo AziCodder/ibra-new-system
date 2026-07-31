@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.core.currency import Currency
 from app.models.payment_request import PaymentRequestPriority
 
 MAX_FILES = 3
@@ -10,7 +11,7 @@ MAX_FILES = 3
 
 class PaymentRequestItemIn(BaseModel):
     product_id: int
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
 
 
 class PaymentRequestCreate(BaseModel):
@@ -19,6 +20,7 @@ class PaymentRequestCreate(BaseModel):
     priority: PaymentRequestPriority = PaymentRequestPriority.normal
     file_keys: list[str] = Field(default_factory=list, max_length=MAX_FILES)
     items: list[PaymentRequestItemIn] = Field(min_length=1)
+    group_ids: list[int] | None = None
 
 
 class PaymentRequestUpdate(BaseModel):
@@ -62,4 +64,4 @@ class PaymentRequestSummaryOut(PaymentRequestOut):
     client_name: str
     manager_name: str
     manager_id: int
-    order_currency: str
+    order_currency: Currency

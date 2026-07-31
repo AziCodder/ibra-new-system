@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -40,12 +40,14 @@ export default function PaymentRequestsPage() {
   const [managerId, setManagerId] = useState<number | undefined>()
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<'asc' | 'desc'>('desc')
-  const [selected, setSelected] = useState<PaymentRequestSummary | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const { data: requests, isLoading, isError, refetch } = useQuery({
     queryKey: ['all-payment-requests', clientId, managerId, search, sort],
     queryFn: () => fetchAllPaymentRequests({ client_id: clientId, manager_id: managerId, search: search || undefined, sort }),
   })
+
+  const selected = requests?.find((r) => r.id === selectedId) ?? null
 
   const { data: clients } = useQuery({
     queryKey: ['clients'],
@@ -129,7 +131,7 @@ export default function PaymentRequestsPage() {
       {!isLoading && !isError && (!requests || requests.length === 0) && (
         <div
           className="rounded-[10px] p-12 text-center"
-          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)' }}
+          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)', boxShadow: 'var(--shadow-card)' }}
         >
           <div className="mb-3" style={{ color: 'var(--color-faint)' }}><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div>
           <div className="text-sm" style={{ color: 'var(--color-muted)' }}>Запросов на оплату нет</div>
@@ -139,7 +141,7 @@ export default function PaymentRequestsPage() {
       {!isLoading && requests && requests.length > 0 && (
         <div
           className="rounded-[10px] overflow-x-auto"
-          style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)' }}
+          style={{ border: '1px solid var(--color-card-border)', background: 'var(--color-surface)', boxShadow: 'var(--shadow-card)' }}
         >
           <table className="rtable w-full text-sm border-collapse">
             <thead>
@@ -157,11 +159,11 @@ export default function PaymentRequestsPage() {
             </thead>
             <tbody>
               {requests.map((req) => {
-                const isSelected = selected?.id === req.id
+                const isSelected = selectedId === req.id
                 return (
                   <tr
                     key={req.id}
-                    onClick={() => setSelected(isSelected ? null : req)}
+                    onClick={() => setSelectedId(isSelected ? null : req.id)}
                     className="cursor-pointer transition-colors"
                     style={{
                       background: isSelected ? 'var(--color-primary-bg)' : 'var(--color-surface)',
@@ -210,11 +212,10 @@ export default function PaymentRequestsPage() {
           orderId={selected.order_id}
           request={selected}
           canEdit={canEdit(selected)}
-          orderCurrency={selected.order_currency}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelectedId(null)}
           onMutate={() => {
             queryClient.invalidateQueries({ queryKey: ['all-payment-requests'] })
-            setSelected(null)
+            setSelectedId(null)
           }}
         />
       )}

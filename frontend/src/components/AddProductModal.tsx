@@ -4,9 +4,7 @@ import { createProduct } from '../api/products'
 import { fetchSuppliers } from '../api/suppliers'
 import FileUploader, { type UploadedFile } from './FileUploader'
 
-const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
-
-export default function AddProductModal({ orderId, onClose }: { orderId: number; onClose: () => void }) {
+export default function AddProductModal({ orderId, orderCurrency, onClose }: { orderId: number; orderCurrency: string; onClose: () => void }) {
   const queryClient = useQueryClient()
 
   const [supplierId, setSupplierId] = useState<number | ''>('')
@@ -14,7 +12,6 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
   const [details, setDetails] = useState('')
   const [quantity, setQuantity] = useState('')
   const [price, setPrice] = useState('')
-  const [currency, setCurrency] = useState('USD')
   const [photo, setPhoto] = useState<UploadedFile | null>(null)
   const [error, setError] = useState('')
 
@@ -28,7 +25,6 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
         details,
         quantity: Number(quantity),
         price: Number(price),
-        currency,
         photo_key: photo?.key ?? null,
       }),
     onSuccess: () => {
@@ -101,7 +97,7 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
           </label>
 
           <label className="block">
-            <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Цена</span>
+            <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Цена ({orderCurrency})</span>
             <input
               type="number"
               min="0"
@@ -113,18 +109,6 @@ export default function AddProductModal({ orderId, onClose }: { orderId: number;
             />
           </label>
         </div>
-
-        <label className="block mb-4">
-          <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Валюта</span>
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-          >
-            {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
 
         <label className="block mb-4">
           <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Поставщик</span>

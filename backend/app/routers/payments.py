@@ -1,32 +1,20 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.models.order import Order
 from app.models.payment import Payment
 from app.models.payment_request import PaymentRequest
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.routers.auth import get_current_user
-from app.schemas.payment import PaymentCreate, PaymentOut
+from app.schemas.payment import PaymentCreate, PaymentOut, PaymentUpdate
+from app.services.order_access import get_order_for_read as _get_order_for_read
+from app.services.order_access import get_order_for_write as _get_order_for_write
+from app.services.payment_remaining import get_payment_request_remaining, get_payment_request_remaining_excluding
 
 router = APIRouter(prefix="/api/orders/{order_id}/payment-requests/{request_id}/payments", tags=["payments"])
-
-
-async def _get_order_for_read(order_id: int, user: User, session: AsyncSession) -> Order:
-    result = await session.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if user.role == UserRole.manager and order.manager_id != user.id:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
-
-
-async def _get_order_for_write(order_id: int, user: User, session: AsyncSession) -> Order:
-    if user.role == UserRole.observer:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    return await _get_order_for_read(order_id, user, session)
 
 
 async def _get_payment_request_or_404(order_id: int, request_id: int, session: AsyncSession) -> PaymentRequest:
@@ -37,6 +25,16 @@ async def _get_payment_request_or_404(order_id: int, request_id: int, session: A
     if not request:
         raise HTTPException(status_code=404, detail="Payment request not found")
     return request
+
+
+async def _get_payment_or_404(request_id: int, payment_id: int, session: AsyncSession) -> Payment:
+    result = await session.execute(
+        select(Payment).where(Payment.id == payment_id, Payment.payment_request_id == request_id)
+    )
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    return payment
 
 
 def _to_payment_out(payment: Payment, author_name: str) -> PaymentOut:
@@ -50,6 +48,7 @@ def _to_payment_out(payment: Payment, author_name: str) -> PaymentOut:
         exchange_rate=payment.exchange_rate,
         file_key=payment.file_key,
         note=payment.note,
+        paid_at=payment.paid_at,
         created_at=payment.created_at,
     )
 
@@ -69,7 +68,7 @@ async def list_payments(
             select(Payment, User.full_name)
             .join(User, Payment.author_id == User.id)
             .where(Payment.payment_request_id == request_id)
-            .order_by(Payment.created_at)
+            .order_by(Payment.paid_at)
         )
     ).all()
     return [_to_payment_out(payment, author_name) for payment, author_name in rows]
@@ -86,6 +85,14 @@ async def create_payment(
     await _get_order_for_write(order_id, user, session)
     await _get_payment_request_or_404(order_id, request_id, session)
 
+    remaining = await get_payment_request_remaining(session, request_id)
+    converted_amount = body.amount * body.exchange_rate
+    if converted_amount > remaining:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Payment amount ({converted_amount}) exceeds remaining balance ({remaining})",
+        )
+
     payment = Payment(
         payment_request_id=request_id,
         author_id=user.id,
@@ -94,8 +101,60 @@ async def create_payment(
         exchange_rate=body.exchange_rate,
         file_key=body.file_key,
         note=body.note,
+        paid_at=body.paid_at or datetime.now(UTC),
     )
     session.add(payment)
     await session.commit()
     await session.refresh(payment)
     return _to_payment_out(payment, user.full_name)
+
+
+@router.patch("/{payment_id}", response_model=PaymentOut)
+async def update_payment(
+    order_id: int,
+    request_id: int,
+    payment_id: int,
+    body: PaymentUpdate,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _get_order_for_write(order_id, user, session)
+    await _get_payment_request_or_404(order_id, request_id, session)
+    payment = await _get_payment_or_404(request_id, payment_id, session)
+
+    remaining = await get_payment_request_remaining_excluding(session, request_id, payment_id)
+    converted_amount = body.amount * body.exchange_rate
+    if converted_amount > remaining:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Payment amount ({converted_amount}) exceeds remaining balance ({remaining})",
+        )
+
+    payment.amount = body.amount
+    payment.currency = body.currency
+    payment.exchange_rate = body.exchange_rate
+    payment.file_key = body.file_key
+    payment.note = body.note
+    payment.paid_at = body.paid_at
+
+    await session.commit()
+    await session.refresh(payment)
+
+    author_name = (await session.execute(select(User.full_name).where(User.id == payment.author_id))).scalar_one()
+    return _to_payment_out(payment, author_name)
+
+
+@router.delete("/{payment_id}", status_code=204)
+async def delete_payment(
+    order_id: int,
+    request_id: int,
+    payment_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _get_order_for_write(order_id, user, session)
+    await _get_payment_request_or_404(order_id, request_id, session)
+    payment = await _get_payment_or_404(request_id, payment_id, session)
+
+    await session.delete(payment)
+    await session.commit()

@@ -26,6 +26,7 @@ export default function StatCard({
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border)',
         borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-card)',
         padding: '16px 18px',
       }}
     >

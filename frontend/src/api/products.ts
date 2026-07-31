@@ -1,3 +1,12 @@
+import type { LogisticsStatus } from './logistics'
+
+export interface ProductShipment {
+  id: number
+  tracking: string | null
+  quantity: string
+  status: LogisticsStatus
+}
+
 export interface Product {
   id: number
   order_id: number
@@ -10,6 +19,11 @@ export interface Product {
   currency: string
   photo_key: string | null
   created_at: string
+  requested_amount: string | null
+  paid_amount: string | null
+  shipped_quantity: string
+  accepted_quantity: string
+  shipments: ProductShipment[]
 }
 
 export interface ProductCreate {

@@ -14,26 +14,43 @@ export function isImageKey(key: string): boolean {
   return IMAGE_EXTENSIONS.has(key.slice(dot).toLowerCase())
 }
 
+export type FileUploadContext = 'order' | 'payment_request'
+
+// Mirrors backend/app/services/storage.py CONTEXT_MAX_SIZES — kept in sync manually,
+// used here only for the hint text and an early client-side rejection.
+const CONTEXT_MAX_MB: Record<FileUploadContext, number> = {
+  order: 3,
+  payment_request: 5,
+}
+
 interface FileUploaderProps {
   files: UploadedFile[]
   onUpload: (file: UploadedFile) => void
   onRemove: (key: string) => void
   disabled?: boolean
+  context?: FileUploadContext
 }
 
-export default function FileUploader({ files, onUpload, onRemove, disabled }: FileUploaderProps) {
+export default function FileUploader({ files, onUpload, onRemove, disabled, context }: FileUploaderProps) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
+  const maxMB = context ? CONTEXT_MAX_MB[context] : null
+
   async function upload(file: File) {
     setError('')
+    if (maxMB && file.size > maxMB * 1024 * 1024) {
+      setError(`Файл превышает лимит ${maxMB} МБ`)
+      return
+    }
     setUploading(true)
     try {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch('/api/files/upload', {
+      const url = context ? `/api/files/upload?context=${context}` : '/api/files/upload'
+      const res = await fetch(url, {
         method: 'POST',
         credentials: 'include',
         body: form,
@@ -88,6 +105,12 @@ export default function FileUploader({ files, onUpload, onRemove, disabled }: Fi
         {uploading ? 'Загрузка...' : 'Перетащите файл или нажмите для выбора'}
         <input ref={inputRef} type="file" onChange={handleFileSelect} className="hidden" />
       </div>
+
+      {maxMB && (
+        <div className="mt-1.5 text-xs" style={{ color: 'var(--color-faint)' }}>
+          До {maxMB} МБ на файл
+        </div>
+      )}
 
       {error && (
         <div className="mt-2 text-xs" style={{ color: 'var(--color-danger)' }}>{error}</div>

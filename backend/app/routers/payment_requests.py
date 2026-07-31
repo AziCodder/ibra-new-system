@@ -6,10 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.models.client import Client
-from app.models.order import Order
 from app.models.payment_request import PaymentRequest, PaymentRequestItem
 from app.models.product import Product
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.payment_request import (
     PaymentRequestCreate,
@@ -18,27 +17,14 @@ from app.schemas.payment_request import (
     PaymentRequestUpdate,
 )
 from app.services.notifications import notify
+from app.services.order_access import get_order_for_read as _get_order_for_read
+from app.services.order_access import get_order_for_write as _get_order_for_write
 from app.services.payment_remaining import get_payment_request_paid
 from app.services.payment_request_dependencies import count_payment_request_dependencies
 from app.services.payment_request_validation import PaymentRequestValidationError, validate_payment_request_items
+from app.services.telegram_groups import get_client_send_targets
 
 router = APIRouter(prefix="/api/orders/{order_id}/payment-requests", tags=["payment_requests"])
-
-
-async def _get_order_for_read(order_id: int, user: User, session: AsyncSession) -> Order:
-    result = await session.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if user.role == UserRole.manager and order.manager_id != user.id:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
-
-
-async def _get_order_for_write(order_id: int, user: User, session: AsyncSession) -> Order:
-    if user.role == UserRole.observer:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    return await _get_order_for_read(order_id, user, session)
 
 
 async def _validate_items_belong_to_order(order_id: int, product_ids: list[int], session: AsyncSession) -> None:
@@ -135,6 +121,18 @@ async def create_payment_request(
     except PaymentRequestValidationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
 
+    client = (await session.execute(select(Client).where(Client.id == order.client_id))).scalar_one()
+    targets = await get_client_send_targets(client, session)
+    chosen_targets: list[dict] = targets if len(targets) == 1 else []
+    if len(targets) > 1:
+        chosen_ids = set(body.group_ids or [])
+        chosen_targets = [t for t in targets if t["group_id"] in chosen_ids]
+        if not chosen_targets:
+            raise HTTPException(
+                status_code=422,
+                detail="Client is linked to multiple Telegram groups; group_ids must select at least one",
+            )
+
     request = PaymentRequest(
         order_id=order_id,
         created_by_id=user.id,
@@ -153,14 +151,16 @@ async def create_payment_request(
     await session.refresh(request)
     out = await _to_payment_request_out(request, session)
 
-    client = (await session.execute(select(Client).where(Client.id == order.client_id))).scalar_one()
-    # Send to the Telegram chat id (a t.me link cannot be a bot.send_message target).
-    notify(
-        client.telegram_chat_id,
+    message = (
         f"По заказу {order.number} выставлен запрос на оплату на сумму {out.total_amount} {out.currency}. "
         f"Детали: {request.details or '—'}. Реквизиты: {request.requisites or '—'}. "
-        f"Ссылка на заказ: /orders/{order.id}",
+        f"Ссылка на заказ: /orders/{order.id}"
     )
+    if chosen_targets:
+        for t in chosen_targets:
+            notify(t["chat_id"], message)
+    else:
+        notify(client.telegram_chat_id, message)
 
     return out
 

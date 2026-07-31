@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field
 
 
 class ClientCreate(BaseModel):
-    code: str = Field(min_length=1, max_length=20)
     full_name: str = Field(min_length=1, max_length=255)
     description: str = ""
     telegram_group_link: str = Field(default="", max_length=255)
@@ -23,5 +22,6 @@ class ClientOut(BaseModel):
     description: str
     telegram_group_link: str
     telegram_chat_id: str
+    telegram_groups: list[str] = []
 
     model_config = {"from_attributes": True}

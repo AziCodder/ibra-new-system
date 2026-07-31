@@ -2,7 +2,21 @@
 
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+
+def _find_project_root() -> Path:
+    # Walk up from this file until we find a dir with both backend/ and frontend/.
+    # Works locally (parents[2]) and inside Docker when /workspace is mounted.
+    for p in Path(__file__).resolve().parents:
+        if (p / "backend").is_dir() and (p / "frontend").is_dir():
+            return p
+    # Fallback: /workspace mount added to docker-compose.yml
+    ws = Path("/workspace")
+    if ws.is_dir():
+        return ws
+    return Path(__file__).resolve().parents[2]
+
+
+ROOT = _find_project_root()
 
 
 def test_prod_dockerfiles_exist():

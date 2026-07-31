@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -31,6 +32,7 @@ class Order(Base):
     status: Mapped[OrderStatus] = mapped_column(Enum(OrderStatus, name="order_status"), default=OrderStatus.in_progress)
     currency: Mapped[str] = mapped_column(String(10), default="USD")
     details: Mapped[str] = mapped_column(Text, default="")
+    file_keys: Mapped[list[str]] = mapped_column(ARRAY(String(255)), default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Snapshot fields — populated by snapshot_order_metrics() when is_ready

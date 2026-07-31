@@ -84,6 +84,7 @@ async def list_all_logistics(
             acceptance_note=lg.acceptance_note,
             created_at=lg.created_at,
             order_number=order.number,
+            order_currency=order.currency,
             client_name=client.full_name,
             manager_name=manager.full_name,
             manager_id=order.manager_id,

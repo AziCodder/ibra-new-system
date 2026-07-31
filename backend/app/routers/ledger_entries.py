@@ -4,28 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.models.ledger_entry import LedgerEntry
-from app.models.order import Order
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.ledger_entry import LedgerEntryCreate, LedgerEntryOut
+from app.services.order_access import get_order_for_read as _get_order_for_read
+from app.services.order_access import get_order_for_write as _get_order_for_write
 
 router = APIRouter(prefix="/api/orders/{order_id}/ledger-entries", tags=["ledger-entries"])
-
-
-async def _get_order_for_read(order_id: int, user: User, session: AsyncSession) -> Order:
-    result = await session.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if user.role == UserRole.manager and order.manager_id != user.id:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
-
-
-async def _get_order_for_write(order_id: int, user: User, session: AsyncSession) -> Order:
-    if user.role == UserRole.observer:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    return await _get_order_for_read(order_id, user, session)
 
 
 def _to_ledger_entry_out(entry: LedgerEntry, author_name: str) -> LedgerEntryOut:

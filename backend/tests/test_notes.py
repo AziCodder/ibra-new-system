@@ -100,7 +100,9 @@ async def test_manager_cannot_view_or_add_notes_on_other_managers_order():
 
 
 @pytest.mark.asyncio
-async def test_observer_can_read_but_cannot_create_notes():
+async def test_observer_can_read_and_create_notes():
+    # Per ТЗ §9 (stop-question 2.7), observers may add order notes — the same
+    # allowance they already have for logistics comments.
     client, owner, other, order = await _setup_order_with_managers()
     try:
         async with async_session_factory() as session:
@@ -121,11 +123,18 @@ async def test_observer_can_read_but_cannot_create_notes():
 
         async with async_session_factory() as session:
             observer = await session.get(User, observer_id)
-            with pytest.raises(HTTPException) as exc_info:
-                await create_note(order.id, NoteCreate(text="blocked"), observer, session)
-            assert exc_info.value.status_code == 403
+            created = await create_note(order.id, NoteCreate(text="observer note"), observer, session)
+            assert created.text == "observer note"
+            assert created.author_name == "Observer"
+
+        async with async_session_factory() as session:
+            observer = await session.get(User, observer_id)
+            notes = await list_notes(order.id, observer, session)
+            assert len(notes) == 2
     finally:
+        # Notes (including the observer-authored one) must be deleted before the
+        # observer user row, or the notes.author_id FK blocks the user delete.
+        await _cleanup(client.id, [owner.id, other.id])
         async with async_session_factory() as session:
             await session.execute(delete(User).where(User.login == "notes_observer"))
             await session.commit()
-        await _cleanup(client.id, [owner.id, other.id])

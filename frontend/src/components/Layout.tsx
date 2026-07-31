@@ -71,7 +71,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         />
       )}
       <aside
-        className={`flex flex-col fixed md:static inset-y-0 left-0 z-50 transition-transform md:translate-x-0 ${
+        className={`flex flex-col fixed inset-y-0 left-0 z-50 transition-transform md:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
         style={{
@@ -179,7 +179,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--color-bg)' }}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 md:ml-[232px]">
         <header
           className="flex items-center gap-3 px-3 md:hidden"
           style={{

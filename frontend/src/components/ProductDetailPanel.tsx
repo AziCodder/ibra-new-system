@@ -2,9 +2,21 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { updateProduct, deleteProduct, type Product } from '../api/products'
 import { fetchSuppliers } from '../api/suppliers'
+import type { LogisticsStatus } from '../api/logistics'
 import FileUploader, { isImageKey, type UploadedFile } from './FileUploader'
+import Tag, { type TagColor } from './Tag'
 
-const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
+const SHIPMENT_STATUS_LABELS: Record<LogisticsStatus, string> = {
+  in_transit: 'В дороге',
+  accepted: 'Принят',
+  cancelled: 'Отменён',
+}
+
+const SHIPMENT_STATUS_COLOR: Record<LogisticsStatus, TagColor> = {
+  in_transit: 'orange',
+  accepted: 'green',
+  cancelled: 'red',
+}
 
 function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
@@ -21,11 +33,13 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 
 export default function ProductDetailPanel({
   orderId,
+  orderCurrency,
   product,
   canEdit,
   onClose,
 }: {
   orderId: number
+  orderCurrency: string
   product: Product
   canEdit: boolean
   onClose: () => void
@@ -39,7 +53,6 @@ export default function ProductDetailPanel({
   const [details, setDetails] = useState(product.details)
   const [quantity, setQuantity] = useState(product.quantity)
   const [price, setPrice] = useState(product.price)
-  const [currency, setCurrency] = useState(product.currency)
   const [photo, setPhoto] = useState<UploadedFile | null>(
     product.photo_key ? { key: product.photo_key, filename: product.photo_key, size: 0 } : null
   )
@@ -54,7 +67,6 @@ export default function ProductDetailPanel({
         details,
         quantity: Number(quantity),
         price: Number(price),
-        currency,
         photo_key: photo?.key ?? null,
       }),
     onSuccess: () => {
@@ -82,6 +94,9 @@ export default function ProductDetailPanel({
   const quantityNum = Number(product.quantity)
   const priceNum = Number(product.price)
   const total = quantityNum * priceNum
+  const shippedNum = Number(product.shipped_quantity ?? 0)
+  const acceptedNum = Number(product.accepted_quantity ?? 0)
+  const shipments = product.shipments ?? []
   const canSave = supplierId !== '' && name.trim() !== '' && Number(quantity) > 0 && Number(price) >= 0
 
   return (
@@ -162,19 +177,40 @@ export default function ProductDetailPanel({
               <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
                 Счета и оплата
               </div>
-              <SummaryRow label="Выставлено" value={`0 ${product.currency}`} />
-              <SummaryRow label="Оплачено" value={`0 ${product.currency}`} />
-              <SummaryRow label="Остаток" value={`${formatNumber(total)} ${product.currency}`} />
+              <SummaryRow label="Выставлено" value={`${formatNumber(Number(product.requested_amount ?? 0))} ${product.currency}`} />
+              <SummaryRow label="Оплачено" value={`${formatNumber(Number(product.paid_amount ?? 0))} ${product.currency}`} />
+              <SummaryRow label="Остаток" value={`${formatNumber(total - Number(product.paid_amount ?? 0))} ${product.currency}`} />
             </div>
 
             <div className="rounded-[8px] p-4 mb-6" style={{ background: 'var(--color-surface-2)' }}>
               <div className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--color-muted)' }}>
                 Логистика
               </div>
-              <SummaryRow label="Отправлено" value={`0 / ${formatNumber(quantityNum)}`} />
-              <div className="text-sm mt-1" style={{ color: 'var(--color-muted)' }}>
-                Трекингов пока нет
-              </div>
+              <SummaryRow label="Отправлено" value={`${formatNumber(shippedNum)} / ${formatNumber(quantityNum)}`} />
+              <SummaryRow label="Принято" value={`${formatNumber(acceptedNum)} / ${formatNumber(quantityNum)}`} />
+              {shipments.length === 0 ? (
+                <div className="text-sm mt-1" style={{ color: 'var(--color-muted)' }}>
+                  Трекингов пока нет
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5 mt-2">
+                  {shipments.map((shipment) => (
+                    <div key={shipment.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate" style={{ color: 'var(--color-text)' }}>
+                        {shipment.tracking || 'Без трекинга'}
+                      </span>
+                      <span className="flex items-center gap-2 whitespace-nowrap">
+                        <span style={{ color: 'var(--color-muted)', fontVariantNumeric: 'tabular-nums' }}>
+                          {formatNumber(Number(shipment.quantity))}
+                        </span>
+                        <Tag color={SHIPMENT_STATUS_COLOR[shipment.status]}>
+                          {SHIPMENT_STATUS_LABELS[shipment.status]}
+                        </Tag>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {canEdit && (
@@ -238,7 +274,7 @@ export default function ProductDetailPanel({
               </label>
 
               <label className="block">
-                <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Цена</span>
+                <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Цена ({orderCurrency})</span>
                 <input
                   type="number"
                   min="0"
@@ -250,18 +286,6 @@ export default function ProductDetailPanel({
                 />
               </label>
             </div>
-
-            <label className="block mb-4">
-              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Валюта</span>
-              <select
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-              >
-                {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </label>
 
             <label className="block mb-4">
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Поставщик</span>

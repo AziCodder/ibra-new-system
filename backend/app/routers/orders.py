@@ -1,20 +1,32 @@
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.models.client import Client
 from app.models.order import Order, OrderStatus
+from app.models.order_sort_position import OrderSortPosition
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user, require_role
-from app.schemas.order import OrderCreate, OrderListOut, OrderOut, OrderStatsOut, OrderUpdate
+from app.schemas.order import (
+    MAX_ORDER_FILES,
+    OrderCreate,
+    OrderFileAdd,
+    OrderListOut,
+    OrderOut,
+    OrderReorderIn,
+    OrderStatsOut,
+    OrderUpdate,
+)
 from app.services.action_log import log_action
+from app.services.order_access import get_order_for_write as _get_order_for_write
 from app.services.order_completion import check_can_complete
-from app.services.order_dependencies import count_order_dependencies
+from app.services.order_dependencies import order_dependency_breakdown
 from app.services.order_metrics import snapshot_order_metrics
 from app.services.order_number import generate_order_number
 from app.services.order_payment_summary import get_orders_payment_totals
@@ -39,6 +51,7 @@ def _to_order_out(
         status=order.status,
         currency=order.currency,
         details=order.details,
+        file_keys=order.file_keys,
         created_at=order.created_at,
         completed_at=order.completed_at,
         profit_pct=order.profit_pct,
@@ -64,21 +77,35 @@ async def create_order(
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
+    manager_id = user.id
+    manager_name = user.full_name
+    if body.manager_id is not None and body.manager_id != user.id:
+        if user.role != UserRole.admin:
+            raise HTTPException(status_code=403, detail="Only admins can assign a different manager")
+        manager = (await session.execute(select(User).where(User.id == body.manager_id))).scalar_one_or_none()
+        if not manager:
+            raise HTTPException(status_code=404, detail="Manager not found")
+        if manager.role not in (UserRole.manager, UserRole.admin):
+            raise HTTPException(status_code=422, detail="Target user must have the manager or admin role")
+        manager_id = manager.id
+        manager_name = manager.full_name
+
     number = await generate_order_number(session, body.client_id)
     order = Order(
         number=number,
         client_id=body.client_id,
-        manager_id=user.id,
+        manager_id=manager_id,
         status=OrderStatus.in_progress,
         currency=body.currency,
         details=body.details,
+        file_keys=body.file_keys,
     )
     session.add(order)
     await session.flush()  # assign order.id before logging
     await log_action(session, user, "order.created", "order", order.id, f"№{order.number}")
     await session.commit()
     await session.refresh(order)
-    return _to_order_out(order, client.full_name, user.full_name)
+    return _to_order_out(order, client.full_name, manager_name)
 
 
 @router.get("/", response_model=OrderListOut)
@@ -87,6 +114,8 @@ async def list_orders(
     status: OrderStatus | None = None,
     manager_id: int | None = None,
     search: str | None = None,
+    sort_by: Literal["created_at", "number", "manual"] = "created_at",
+    sort_order: Literal["asc", "desc"] = "desc",
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     user: User = Depends(get_current_user),
@@ -112,8 +141,25 @@ async def list_orders(
         select(Order, Client.full_name, User.full_name)
         .join(Client, Order.client_id == Client.id)
         .join(User, Order.manager_id == User.id)
-        .order_by(Order.id.desc())
     )
+
+    if sort_by == "manual":
+        # Ручной порядок ПЕРСОНАЛЬНЫЙ: позиции текущего пользователя. Заказы без
+        # сохранённой позиции (созданные после последней перестановки) идут
+        # сверху и новыми вперёд — иначе новый заказ затерялся бы в конце списка.
+        list_query = list_query.outerjoin(
+            OrderSortPosition,
+            (OrderSortPosition.order_id == Order.id) & (OrderSortPosition.user_id == user.id),
+        ).order_by(
+            case((OrderSortPosition.position.is_(None), 0), else_=1),
+            OrderSortPosition.position.asc(),
+            Order.id.desc(),
+        )
+    else:
+        sort_column = Order.number if sort_by == "number" else Order.created_at
+        direction = sort_column.asc() if sort_order == "asc" else sort_column.desc()
+        list_query = list_query.order_by(direction, Order.id.desc())
+
     for f in filters:
         count_query = count_query.where(f)
         list_query = list_query.where(f)
@@ -130,6 +176,66 @@ async def list_orders(
     ]
 
     return OrderListOut(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.post("/reorder", status_code=204, response_model=None)
+async def reorder_orders(
+    body: OrderReorderIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Сохранить ручной порядок заказов для текущего пользователя.
+
+    Порядок ПЕРСОНАЛЬНЫЙ — у остальных пользователей он не меняется, поэтому
+    перестановка не пишется в журнал действий. Фронтенд присылает id заказов
+    видимой страницы в новом порядке; позиции пересчитываются по всему списку
+    доступных пользователю заказов, чтобы порядок оставался согласованным
+    между страницами пагинации. Ответ не сериализуется — фронтенд
+    перезапрашивает список.
+    """
+    submitted = body.order_ids
+    if not submitted:
+        return
+    if len(set(submitted)) != len(submitted):
+        raise HTTPException(status_code=422, detail="Duplicate order ids in the request")
+
+    # Менеджер видит только свои заказы — и переставлять может только их.
+    scope = [Order.manager_id == user.id] if user.role == UserRole.manager else []
+    visible_ids = [row[0] for row in (await session.execute(select(Order.id).where(*scope))).all()]
+    if set(submitted) - set(visible_ids):
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    saved_positions = dict(
+        (
+            await session.execute(
+                select(OrderSortPosition.order_id, OrderSortPosition.position).where(
+                    OrderSortPosition.user_id == user.id
+                )
+            )
+        ).all()
+    )
+    # Текущий персональный порядок целиком — тот же, что отдаёт sort_by=manual:
+    # сначала заказы без позиции (новые вперёд), затем расставленные по position.
+    full_order = sorted(
+        visible_ids,
+        key=lambda order_id: (1, saved_positions[order_id], 0)
+        if order_id in saved_positions
+        else (0, 0, -order_id),
+    )
+    # Присланные заказы занимают те же места в общем списке, но в новом порядке —
+    # так перестановка внутри страницы не задевает заказы с других страниц.
+    slots = [i for i, order_id in enumerate(full_order) if order_id in set(submitted)]
+    for slot, order_id in zip(slots, submitted, strict=True):
+        full_order[slot] = order_id
+
+    await session.execute(delete(OrderSortPosition).where(OrderSortPosition.user_id == user.id))
+    session.add_all(
+        [
+            OrderSortPosition(user_id=user.id, order_id=order_id, position=index)
+            for index, order_id in enumerate(full_order)
+        ]
+    )
+    await session.commit()
 
 
 @router.get("/stats", response_model=OrderStatsOut)
@@ -254,6 +360,16 @@ async def update_order(
     order, client_name, manager_name = row
 
     order.details = body.details
+
+    if body.manager_id is not None and body.manager_id != order.manager_id:
+        manager = (await session.execute(select(User).where(User.id == body.manager_id))).scalar_one_or_none()
+        if not manager:
+            raise HTTPException(status_code=404, detail="Manager not found")
+        if manager.role not in (UserRole.manager, UserRole.admin):
+            raise HTTPException(status_code=422, detail="Target user must have the manager or admin role")
+        order.manager_id = manager.id
+        manager_name = manager.full_name
+
     await session.commit()
     await session.refresh(order)
     return _to_order_out(order, client_name, manager_name)
@@ -343,6 +459,59 @@ async def set_order_status(
     return _to_order_out(order, client_name, manager_name)
 
 
+@router.post("/{order_id}/files", response_model=OrderOut)
+async def add_order_file(
+    order_id: int,
+    body: OrderFileAdd,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    order = await _get_order_for_write(order_id, user, session)
+    if len(order.file_keys) >= MAX_ORDER_FILES:
+        raise HTTPException(status_code=422, detail=f"Maximum {MAX_ORDER_FILES} files per order")
+
+    order.file_keys = [*order.file_keys, body.file_key]
+    await session.commit()
+    await session.refresh(order)
+
+    row = (
+        await session.execute(
+            select(Client.full_name, User.full_name)
+            .select_from(Order)
+            .join(Client, Order.client_id == Client.id)
+            .join(User, Order.manager_id == User.id)
+            .where(Order.id == order_id)
+        )
+    ).first()
+    client_name, manager_name = row
+    return _to_order_out(order, client_name, manager_name)
+
+
+@router.delete("/{order_id}/files/{file_key}", response_model=OrderOut)
+async def remove_order_file(
+    order_id: int,
+    file_key: str,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    order = await _get_order_for_write(order_id, user, session)
+    order.file_keys = [k for k in order.file_keys if k != file_key]
+    await session.commit()
+    await session.refresh(order)
+
+    row = (
+        await session.execute(
+            select(Client.full_name, User.full_name)
+            .select_from(Order)
+            .join(Client, Order.client_id == Client.id)
+            .join(User, Order.manager_id == User.id)
+            .where(Order.id == order_id)
+        )
+    ).first()
+    client_name, manager_name = row
+    return _to_order_out(order, client_name, manager_name)
+
+
 @router.delete("/{order_id}", status_code=204)
 async def delete_order(
     order_id: int,
@@ -354,11 +523,15 @@ async def delete_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    dependency_count = await count_order_dependencies(session, order_id)
+    breakdown = await order_dependency_breakdown(session, order_id)
+    dependency_count = sum(breakdown.values())
     if dependency_count > 0:
         raise HTTPException(
             status_code=409,
-            detail=f"Order has {dependency_count} related record(s) and cannot be deleted",
+            detail={
+                "message": f"Order has {dependency_count} related record(s) and cannot be deleted",
+                "breakdown": breakdown,
+            },
         )
 
     await session.delete(order)

@@ -15,6 +15,7 @@ from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
+from app.models.telegram_group import ClientTelegramGroup, TelegramGroup
 from app.routers.logistics import (
     accept_logistics,
     create_logistics,
@@ -25,7 +26,7 @@ from app.routers.logistics import (
     unaccept_logistics,
     update_logistics,
 )
-from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsUpdate
+from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsUpdate, NotifyLogisticsReceivedIn
 
 SHIP_DATE = datetime.now(UTC)
 
@@ -244,7 +245,9 @@ async def test_manager_cannot_edit_accepted_logistics():
 
 
 @pytest.mark.asyncio
-async def test_admin_can_edit_accepted_logistics():
+async def test_admin_cannot_edit_frozen_fields_of_accepted_logistics():
+    # Only /accept and /unaccept may touch an accepted record's fields — a direct
+    # PATCH (even from an admin) must not be able to slip a field change through.
     client, supplier, owner, other, observer, admin, order, product = await _setup()
     try:
         async with async_session_factory() as session:
@@ -261,8 +264,34 @@ async def test_admin_can_edit_accepted_logistics():
             )
 
         async with async_session_factory() as session:
-            updated = await update_logistics(order.id, created.id, LogisticsUpdate(tracking="ADMIN-EDIT"), admin, session)
-            assert updated.tracking == "ADMIN-EDIT"
+            with pytest.raises(HTTPException) as exc_info:
+                await update_logistics(order.id, created.id, LogisticsUpdate(tracking="ADMIN-EDIT"), admin, session)
+            assert exc_info.value.status_code == 409
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_edit_frozen_fields_of_cancelled_logistics():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(
+                    product_id=product.id,
+                    quantity=Decimal("5"),
+                    ship_date=SHIP_DATE,
+                    status=LogisticsStatus.cancelled,
+                ),
+                admin,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await update_logistics(order.id, created.id, LogisticsUpdate(quantity=Decimal("1")), admin, session)
+            assert exc_info.value.status_code == 409
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
 
@@ -566,7 +595,7 @@ async def test_notify_received_calls_notify_with_client_chat_and_tracking():
 
         async with async_session_factory() as session:
             with patch("app.routers.logistics.notify") as mock_notify:
-                await notify_logistics_received(order.id, created.id, owner, session)
+                await notify_logistics_received(order.id, created.id, None, owner, session)
 
             mock_notify.assert_called_once()
             target, message = mock_notify.call_args[0]
@@ -592,7 +621,92 @@ async def test_observer_cannot_trigger_notify_received():
 
         async with async_session_factory() as session:
             with pytest.raises(HTTPException) as exc_info:
-                await notify_logistics_received(order.id, created.id, observer, session)
+                await notify_logistics_received(order.id, created.id, None, observer, session)
             assert exc_info.value.status_code == 403
     finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_notify_received_returns_409_with_available_groups_when_ambiguous():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    group_a_id = group_b_id = None
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), tracking="M77-AMBIG", ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            group_a = TelegramGroup(chat_id="-100901001", title="Group A")
+            group_b = TelegramGroup(chat_id="-100901002", title="Group B")
+            session.add_all([group_a, group_b])
+            await session.commit()
+            await session.refresh(group_a)
+            await session.refresh(group_b)
+            group_a_id, group_b_id = group_a.id, group_b.id
+            session.add(ClientTelegramGroup(client_id=client.id, group_id=group_a_id))
+            session.add(ClientTelegramGroup(client_id=client.id, group_id=group_b_id))
+            await session.commit()
+
+        async with async_session_factory() as session:
+            with patch("app.routers.logistics.notify") as mock_notify:
+                with pytest.raises(HTTPException) as exc_info:
+                    await notify_logistics_received(order.id, created.id, None, owner, session)
+            mock_notify.assert_not_called()
+            assert exc_info.value.status_code == 409
+            available_ids = {g["group_id"] for g in exc_info.value.detail["available_groups"]}
+            assert available_ids == {group_a_id, group_b_id}
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(delete(ClientTelegramGroup).where(ClientTelegramGroup.client_id == client.id))
+            if group_a_id is not None:
+                await session.execute(delete(TelegramGroup).where(TelegramGroup.id.in_([group_a_id, group_b_id])))
+            await session.commit()
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_notify_received_sends_to_chosen_group_when_group_ids_given():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    group_a_id = group_b_id = None
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), tracking="M77-CHOSEN", ship_date=SHIP_DATE),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            group_a = TelegramGroup(chat_id="-100902001", title="Group A")
+            group_b = TelegramGroup(chat_id="-100902002", title="Group B")
+            session.add_all([group_a, group_b])
+            await session.commit()
+            await session.refresh(group_a)
+            await session.refresh(group_b)
+            group_a_id, group_b_id = group_a.id, group_b.id
+            session.add(ClientTelegramGroup(client_id=client.id, group_id=group_a_id))
+            session.add(ClientTelegramGroup(client_id=client.id, group_id=group_b_id))
+            await session.commit()
+
+        async with async_session_factory() as session:
+            with patch("app.routers.logistics.notify") as mock_notify:
+                await notify_logistics_received(
+                    order.id, created.id, NotifyLogisticsReceivedIn(group_ids=[group_a_id]), owner, session
+                )
+            mock_notify.assert_called_once()
+            target, message = mock_notify.call_args[0]
+            assert target == "-100902001"
+            assert "M77-CHOSEN" in message
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(delete(ClientTelegramGroup).where(ClientTelegramGroup.client_id == client.id))
+            if group_a_id is not None:
+                await session.execute(delete(TelegramGroup).where(TelegramGroup.id.in_([group_a_id, group_b_id])))
+            await session.commit()
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])

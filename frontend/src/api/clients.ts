@@ -1,3 +1,5 @@
+import { extractErrorMessage, extractErrorDetail } from './errors'
+
 export interface Client {
   id: number
   code: string
@@ -5,10 +7,10 @@ export interface Client {
   description: string
   telegram_group_link: string
   telegram_chat_id: string
+  telegram_groups: string[]
 }
 
 export interface ClientCreate {
-  code: string
   full_name: string
   description?: string
   telegram_group_link?: string
@@ -16,7 +18,7 @@ export interface ClientCreate {
 
 export async function fetchClients(): Promise<Client[]> {
   const res = await fetch('/api/clients/', { credentials: 'include' })
-  if (!res.ok) throw new Error('Failed to fetch clients')
+  if (!res.ok) throw new Error('Не удалось загрузить клиентов')
   return res.json()
 }
 
@@ -27,7 +29,7 @@ export async function generateTelegramLink(clientId: number): Promise<{ token: s
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to generate link')
+    throw new Error(extractErrorMessage(err, 'Не удалось создать ссылку'))
   }
   return res.json()
 }
@@ -47,7 +49,7 @@ export async function createClient(data: ClientCreate): Promise<Client> {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to create client')
+    throw new Error(extractErrorMessage(err, 'Не удалось создать клиента'))
   }
   return res.json()
 }
@@ -61,7 +63,7 @@ export async function updateClient(id: number, data: ClientUpdate): Promise<Clie
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to update client')
+    throw new Error(extractErrorMessage(err, 'Не удалось обновить клиента'))
   }
   return res.json()
 }
@@ -70,6 +72,25 @@ export async function deleteClient(id: number): Promise<void> {
   const res = await fetch(`/api/clients/${id}`, { method: 'DELETE', credentials: 'include' })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to delete client')
+    const orderNumbers = extractErrorDetail<string[]>(err, 'order_numbers')
+    if (orderNumbers && orderNumbers.length > 0) {
+      const orderCount = extractErrorDetail<number>(err, 'order_count') ?? orderNumbers.length
+      const shown = orderNumbers.join(', ')
+      const more = orderCount > orderNumbers.length ? ` и ещё ${orderCount - orderNumbers.length}` : ''
+      throw new Error(`Нельзя удалить клиента — за ним закреплены заказы: ${shown}${more}. Удаление возможно только когда за клиентом не остаётся ни одного заказа (включая связанные заявки на оплату).`)
+    }
+    throw new Error(extractErrorMessage(err, 'Не удалось удалить клиента'))
   }
+}
+
+export interface TelegramGroupOut {
+  group_id: number
+  chat_id: string
+  title: string
+}
+
+export async function fetchClientTelegramGroups(clientId: number): Promise<TelegramGroupOut[]> {
+  const res = await fetch(`/api/clients/${clientId}/telegram-groups`, { credentials: 'include' })
+  if (!res.ok) throw new Error('Failed to fetch client telegram groups')
+  return res.json()
 }

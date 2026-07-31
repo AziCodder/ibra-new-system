@@ -9,6 +9,9 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    // Allows the backend container to probe this dev server by its compose
+    // service name (Host: frontend:5173) for the system-health page.
+    allowedHosts: ['frontend'],
     proxy: {
       '/api': {
         target: backendUrl,

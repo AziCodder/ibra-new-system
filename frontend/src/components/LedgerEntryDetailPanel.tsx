@@ -24,11 +24,13 @@ export default function LedgerEntryDetailPanel({
   orderId,
   entry,
   canEdit,
+  orderCurrency,
   onClose,
 }: {
   orderId: number
   entry: LedgerEntry
   canEdit: boolean
+  orderCurrency: string
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -85,7 +87,12 @@ export default function LedgerEntryDetailPanel({
             <Tag color={badge.color}>{badge.label}</Tag>
           </div>
           <SummaryRow label="Сумма" value={`${formatNumber(Number(entry.amount))} ${entry.currency}`} />
-          <SummaryRow label="Курс" value={entry.exchange_rate} />
+          <SummaryRow
+            label="Курс"
+            value={entry.currency === orderCurrency
+              ? String(entry.exchange_rate)
+              : `1 ${entry.currency} = ${entry.exchange_rate} ${orderCurrency}`}
+          />
           <SummaryRow label="Автор" value={entry.author_name} />
           <SummaryRow label="Дата" value={formatDate(entry.created_at)} />
           {entry.details && (

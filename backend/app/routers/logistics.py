@@ -1,38 +1,31 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.models.client import Client
 from app.models.logistics import Logistics, LogisticsStatus
 from app.models.logistics_comment import LogisticsComment
-from app.models.order import Order
 from app.models.product import Product
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
-from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsOut, LogisticsUpdate
+from app.schemas.logistics import (
+    LogisticsAccept,
+    LogisticsCreate,
+    LogisticsOut,
+    LogisticsUpdate,
+    NotifyLogisticsReceivedIn,
+)
 from app.schemas.logistics_comment import LogisticsCommentCreate, LogisticsCommentOut
 from app.services.action_log import log_action
 from app.services.logistics_validation import LogisticsValidationError, validate_logistics_quantity
 from app.services.notifications import notify
+from app.services.order_access import get_order_for_read as _get_order_for_read
+from app.services.order_access import get_order_for_write as _get_order_for_write
+from app.services.telegram_groups import get_client_send_targets
 
 router = APIRouter(prefix="/api/orders/{order_id}/logistics", tags=["logistics"])
-
-
-async def _get_order_for_read(order_id: int, user: User, session: AsyncSession) -> Order:
-    result = await session.execute(select(Order).where(Order.id == order_id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if user.role == UserRole.manager and order.manager_id != user.id:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
-
-
-async def _get_order_for_write(order_id: int, user: User, session: AsyncSession) -> Order:
-    if user.role == UserRole.observer:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    return await _get_order_for_read(order_id, user, session)
 
 
 async def _get_product_in_order(order_id: int, product_id: int, session: AsyncSession) -> Product:
@@ -57,6 +50,23 @@ def _check_manager_can_edit(logistics: Logistics, user: User) -> None:
     """Managers may only edit shipments still in transit; admins may edit any status."""
     if user.role == UserRole.manager and logistics.status != LogisticsStatus.in_transit:
         raise HTTPException(status_code=403, detail="Only shipments in transit can be edited by a manager")
+
+
+def _check_fields_frozen(logistics: Logistics, updates: dict) -> None:
+    """Once accepted or cancelled, only a status transition may go through PATCH —
+    every other field is frozen for every role (including admin) until the shipment
+    is returned to in-transit via /unaccept.
+    """
+    if logistics.status in (LogisticsStatus.accepted, LogisticsStatus.cancelled):
+        frozen_fields = set(updates) - {"status"}
+        if frozen_fields:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Shipment is {logistics.status.value}; only its status can change via PATCH "
+                    f"(rejected fields: {', '.join(sorted(frozen_fields))})"
+                ),
+            )
 
 
 def _check_deletable(logistics: Logistics) -> None:
@@ -157,7 +167,11 @@ async def create_logistics(
         acceptance_note=body.acceptance_note,
     )
     session.add(logistics)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="Tracking number already exists in the system")
     await session.refresh(logistics)
     return await _to_logistics_out(logistics, session)
 
@@ -175,6 +189,7 @@ async def update_logistics(
     _check_manager_can_edit(logistics, user)
 
     updates = body.model_dump(exclude_unset=True)
+    _check_fields_frozen(logistics, updates)
 
     if updates.get("status") == LogisticsStatus.accepted:
         raise HTTPException(status_code=422, detail="Use POST /accept to accept a shipment")
@@ -190,7 +205,11 @@ async def update_logistics(
     for field, value in updates.items():
         setattr(logistics, field, value)
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status_code=409, detail="Tracking number already exists in the system")
     await session.refresh(logistics)
     return await _to_logistics_out(logistics, session)
 
@@ -326,16 +345,44 @@ async def create_logistics_comment(
 async def notify_logistics_received(
     order_id: int,
     logistics_id: int,
+    body: NotifyLogisticsReceivedIn | None = None,
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """«Отправить уведомление о получении» — sends via notify() to the client's Telegram chat."""
-    order = await _get_order_for_write(order_id, user, session)
+    """«Отправить уведомление о получении».
+
+    0 linked groups -> private chat (unchanged legacy behavior).
+    1 linked group  -> auto-sent there, no picker.
+    2+ linked groups -> caller must pass group_ids; if omitted, 409 with
+    available groups so the frontend can render a picker and retry.
+
+    Deliberately uses the read-level guard, not _get_order_for_write: sending this
+    notice doesn't mutate any order data (no effect on the profit snapshot), so
+    it stays available even after the order is completed — only the observer
+    restriction applies.
+    """
+    if user.role == UserRole.observer:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    order = await _get_order_for_read(order_id, user, session)
     logistics = await _get_logistics_or_404(order_id, logistics_id, session)
 
     client = (await session.execute(select(Client).where(Client.id == order.client_id))).scalar_one()
-    # Send to the Telegram chat id (a t.me link cannot be a bot.send_message target).
-    notify(
-        client.telegram_chat_id,
-        f"Товар по заказу {order.number} получен. Трекинг: {logistics.tracking or '—'}.",
-    )
+    message = f"Товар по заказу {order.number} получен. Трекинг: {logistics.tracking or '—'}."
+
+    targets = await get_client_send_targets(client, session)
+    if not targets:
+        notify(client.telegram_chat_id, message)
+        return
+
+    group_ids = body.group_ids if body is not None else None
+    if group_ids is None:
+        if len(targets) > 1:
+            raise HTTPException(status_code=409, detail={"available_groups": targets})
+        notify(targets[0]["chat_id"], message)
+        return
+
+    chosen = [t for t in targets if t["group_id"] in group_ids]
+    if not chosen:
+        raise HTTPException(status_code=422, detail="No valid group_ids for this client")
+    for t in chosen:
+        notify(t["chat_id"], message)

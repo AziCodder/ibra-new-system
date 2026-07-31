@@ -22,7 +22,7 @@ class Logistics(Base):
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3))
-    tracking: Mapped[str] = mapped_column(String(255), default="")
+    tracking: Mapped[str | None] = mapped_column(String(255), default=None, nullable=True, unique=True)
     ship_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     invoice_file_key: Mapped[str | None] = mapped_column(String(255), default=None)
     details: Mapped[str] = mapped_column(Text, default="")

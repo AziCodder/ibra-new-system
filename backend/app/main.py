@@ -23,9 +23,11 @@ from app.routers.orders import router as orders_router
 from app.routers.payment_requests import router as payment_requests_router
 from app.routers.payment_requests_global import router as payment_requests_global_router
 from app.routers.payments import router as payments_router
+from app.routers.process_logs import router as process_logs_router
 from app.routers.products import router as products_router
 from app.routers.profit import router as profit_router
 from app.routers.suppliers import router as suppliers_router
+from app.routers.system_health import router as system_health_router
 from app.routers.users import router as users_router
 from app.services.telegram_bot import close_bot, start_polling, stop_polling
 
@@ -76,9 +78,11 @@ app.include_router(orders_router)
 app.include_router(payment_requests_router)
 app.include_router(payment_requests_global_router)
 app.include_router(payments_router)
+app.include_router(process_logs_router)
 app.include_router(products_router)
 app.include_router(profit_router)
 app.include_router(suppliers_router)
+app.include_router(system_health_router)
 app.include_router(users_router)
 
 app.add_exception_handler(Exception, unhandled_exception_handler)
