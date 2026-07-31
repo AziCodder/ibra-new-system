@@ -53,7 +53,13 @@ app = FastAPI(
 
 if settings.is_production:
     app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=settings.trusted_hosts)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_hosts)
+    # "localhost" is always allowed alongside the public TRUSTED_HOSTS: the
+    # system-health panel probes /health* on itself via http://localhost:8000
+    # (see health_self_base) — that loopback call never leaves the container,
+    # so it can't be spoofed by an external Host header regardless of domain/IP.
+    app.add_middleware(
+        TrustedHostMiddleware, allowed_hosts=[*settings.trusted_hosts, "localhost"]
+    )
 
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
