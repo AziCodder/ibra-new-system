@@ -1,7 +1,7 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _DEFAULT_SECRET = "change-me-to-random-string"
 
@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     session_secret: str = _DEFAULT_SECRET
     upload_dir: str = "./uploads"
     telegram_bot_token: str = ""
-    cors_origins: list[str] = ["http://localhost:5173"]
-    trusted_hosts: list[str] = []
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
+    trusted_hosts: Annotated[list[str], NoDecode] = []
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"
 
     # Состояние системы (health-панель в админке). *_base — откуда бэкенд

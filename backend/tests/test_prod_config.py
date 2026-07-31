@@ -62,3 +62,16 @@ def test_session_cookie_params_secure_in_production():
 def test_parse_cors_origins_from_comma_string():
     s = Settings(cors_origins="https://a.com, https://b.com")
     assert s.cors_origins == ["https://a.com", "https://b.com"]
+
+
+def test_parse_cors_origins_from_env_var(monkeypatch):
+    # Env vars go through pydantic-settings' EnvSettingsSource, a different code
+    # path from init kwargs: complex-typed fields get JSON-decoded *before* our
+    # mode="before" validator runs, unless annotated with NoDecode. Regression
+    # test for a real prod outage — this failed with a bare SettingsError even
+    # though test_parse_cors_origins_from_comma_string above passed.
+    monkeypatch.setenv("CORS_ORIGINS", "https://a.com,https://b.com")
+    monkeypatch.setenv("TRUSTED_HOSTS", "a.com,b.com")
+    s = Settings()
+    assert s.cors_origins == ["https://a.com", "https://b.com"]
+    assert s.trusted_hosts == ["a.com", "b.com"]
