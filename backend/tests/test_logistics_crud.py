@@ -10,12 +10,12 @@ from app.core.database import async_session_factory
 from app.core.security import hash_password
 from app.models.action_log import ActionLog
 from app.models.client import Client
-from app.models.logistics import Logistics, LogisticsStatus
+from app.models.logistics import Logistics, LogisticsItem, LogisticsStatus
 from app.models.order import Order, OrderStatus
 from app.models.product import Product
 from app.models.supplier import Supplier
-from app.models.user import User, UserRole
 from app.models.telegram_group import ClientTelegramGroup, TelegramGroup
+from app.models.user import User, UserRole
 from app.routers.logistics import (
     accept_logistics,
     create_logistics,
@@ -26,7 +26,14 @@ from app.routers.logistics import (
     unaccept_logistics,
     update_logistics,
 )
-from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsUpdate, NotifyLogisticsReceivedIn
+from app.schemas.logistics import (
+    LogisticsAccept,
+    LogisticsCreate,
+    LogisticsItemIn,
+    LogisticsUpdate,
+    NotifyLogisticsReceivedIn,
+)
+from app.services.logistics_validation import get_product_shipped_remaining
 
 SHIP_DATE = datetime.now(UTC)
 
@@ -91,13 +98,15 @@ async def test_create_list_get_update_delete_lifecycle():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("10"), tracking="M77-170566", ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("10"))],
+                    tracking="M77-170566", ship_date=SHIP_DATE),
                 owner,
                 session,
             )
-            assert created.quantity == Decimal("10")
+            assert created.total_quantity == Decimal("10")
             assert created.status == LogisticsStatus.in_transit
-            assert created.product_name == "Widget"
+            assert [(i.product_name, i.quantity) for i in created.items] == [("Widget", Decimal("10"))]
             assert created.created_by_name == "Owner Manager"
 
         async with async_session_factory() as session:
@@ -124,6 +133,179 @@ async def test_create_list_get_update_delete_lifecycle():
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
 
 
+async def _add_second_product(order_id: int, supplier_id: int) -> Product:
+    async with async_session_factory() as session:
+        product = Product(
+            order_id=order_id,
+            supplier_id=supplier_id,
+            name="Gadget",
+            quantity=Decimal("8"),
+            price=Decimal("3.00"),
+            currency="USD",
+        )
+        session.add(product)
+        await session.commit()
+        await session.refresh(product)
+        return product
+
+
+@pytest.mark.asyncio
+async def test_one_shipment_carries_several_products_each_with_its_own_quantity():
+    client, supplier, owner, other, observer, admin, order, widget = await _setup()
+    try:
+        gadget = await _add_second_product(order.id, supplier.id)
+
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(
+                    items=[
+                        LogisticsItemIn(product_id=widget.id, quantity=Decimal("6")),
+                        LogisticsItemIn(product_id=gadget.id, quantity=Decimal("8")),
+                    ],
+                    tracking="MULTI-1",
+                    ship_date=SHIP_DATE,
+                ),
+                owner,
+                session,
+            )
+            assert [(i.product_name, i.quantity) for i in created.items] == [
+                ("Widget", Decimal("6.000")),
+                ("Gadget", Decimal("8.000")),
+            ]
+            assert created.total_quantity == Decimal("14.000")
+
+        async with async_session_factory() as session:
+            fetched = await get_logistics(order.id, created.id, owner, session)
+            assert len(fetched.items) == 2
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_each_line_is_checked_against_its_own_products_remaining():
+    """Balances are per product — a line may not borrow another line's headroom."""
+    client, supplier, owner, other, observer, admin, order, widget = await _setup()
+    try:
+        gadget = await _add_second_product(order.id, supplier.id)
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await create_logistics(
+                    order.id,
+                    LogisticsCreate(
+                        items=[
+                            # Widget has 20 spare, Gadget only 8 — the total (24) fits
+                            # inside 28, but the Gadget line alone does not.
+                            LogisticsItemIn(product_id=widget.id, quantity=Decimal("15")),
+                            LogisticsItemIn(product_id=gadget.id, quantity=Decimal("9")),
+                        ],
+                        ship_date=SHIP_DATE,
+                    ),
+                    owner,
+                    session,
+                )
+            assert exc_info.value.status_code == 422
+            assert str(gadget.id) in exc_info.value.detail
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_same_product_twice_in_one_shipment_is_rejected():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await create_logistics(
+                    order.id,
+                    LogisticsCreate(
+                        items=[
+                            LogisticsItemIn(product_id=product.id, quantity=Decimal("5")),
+                            LogisticsItemIn(product_id=product.id, quantity=Decimal("5")),
+                        ],
+                        ship_date=SHIP_DATE,
+                    ),
+                    owner,
+                    session,
+                )
+            assert exc_info.value.status_code == 422
+            assert "more than once" in exc_info.value.detail
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_update_replaces_the_whole_line_list():
+    client, supplier, owner, other, observer, admin, order, widget = await _setup()
+    try:
+        gadget = await _add_second_product(order.id, supplier.id)
+
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=widget.id, quantity=Decimal("20"))],
+                    ship_date=SHIP_DATE,
+                ),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            updated = await update_logistics(
+                order.id,
+                created.id,
+                LogisticsUpdate(
+                    items=[
+                        # Re-validating must not count the shipment's own saved line,
+                        # or dropping Widget from 20 to 5 would look like an overcommit.
+                        LogisticsItemIn(product_id=widget.id, quantity=Decimal("5")),
+                        LogisticsItemIn(product_id=gadget.id, quantity=Decimal("8")),
+                    ]
+                ),
+                owner,
+                session,
+            )
+            assert [(i.product_name, i.quantity) for i in updated.items] == [
+                ("Widget", Decimal("5.000")),
+                ("Gadget", Decimal("8.000")),
+            ]
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_shipment_removes_its_lines():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_logistics(
+                order.id,
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("10"))],
+                    ship_date=SHIP_DATE,
+                ),
+                owner,
+                session,
+            )
+
+        async with async_session_factory() as session:
+            await delete_logistics(order.id, created.id, owner, session)
+
+        async with async_session_factory() as session:
+            leftover = (
+                await session.execute(
+                    select(LogisticsItem).where(LogisticsItem.logistics_id == created.id)
+                )
+            ).scalars().all()
+            assert leftover == []
+            # ...and the freed quantity is shippable again.
+            assert await get_product_shipped_remaining(session, product.id) == Decimal("20")
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
 @pytest.mark.asyncio
 async def test_create_rejects_quantity_exceeding_remaining_with_422():
     client, supplier, owner, other, observer, admin, order, product = await _setup()
@@ -132,7 +314,9 @@ async def test_create_rejects_quantity_exceeding_remaining_with_422():
             with pytest.raises(HTTPException) as exc_info:
                 await create_logistics(
                     order.id,
-                    LogisticsCreate(product_id=product.id, quantity=Decimal("999"), ship_date=SHIP_DATE),
+                    LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("999"))],
+                    ship_date=SHIP_DATE),
                     owner,
                     session,
                 )
@@ -156,7 +340,9 @@ async def test_create_rejects_product_from_another_order_with_422():
             with pytest.raises(HTTPException) as exc_info:
                 await create_logistics(
                     foreign_order.id,
-                    LogisticsCreate(product_id=product.id, quantity=Decimal("1"), ship_date=SHIP_DATE),
+                    LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("1"))],
+                    ship_date=SHIP_DATE),
                     owner,
                     session,
                 )
@@ -181,7 +367,9 @@ async def test_manager_cannot_access_other_managers_logistics():
             with pytest.raises(HTTPException) as exc_info:
                 await create_logistics(
                     order.id,
-                    LogisticsCreate(product_id=product.id, quantity=Decimal("1"), ship_date=SHIP_DATE),
+                    LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("1"))],
+                    ship_date=SHIP_DATE),
                     other,
                     session,
                 )
@@ -197,7 +385,9 @@ async def test_observer_can_read_but_not_create():
         async with async_session_factory() as session:
             await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("1"), ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("1"))],
+                    ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -210,7 +400,9 @@ async def test_observer_can_read_but_not_create():
             with pytest.raises(HTTPException) as exc_info:
                 await create_logistics(
                     order.id,
-                    LogisticsCreate(product_id=product.id, quantity=Decimal("1"), ship_date=SHIP_DATE),
+                    LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("1"))],
+                    ship_date=SHIP_DATE),
                     observer,
                     session,
                 )
@@ -227,8 +419,7 @@ async def test_manager_cannot_edit_accepted_logistics():
             created = await create_logistics(
                 order.id,
                 LogisticsCreate(
-                    product_id=product.id,
-                    quantity=Decimal("5"),
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.accepted,
                 ),
@@ -254,8 +445,7 @@ async def test_admin_cannot_edit_frozen_fields_of_accepted_logistics():
             created = await create_logistics(
                 order.id,
                 LogisticsCreate(
-                    product_id=product.id,
-                    quantity=Decimal("5"),
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.accepted,
                 ),
@@ -279,8 +469,7 @@ async def test_admin_cannot_edit_frozen_fields_of_cancelled_logistics():
             created = await create_logistics(
                 order.id,
                 LogisticsCreate(
-                    product_id=product.id,
-                    quantity=Decimal("5"),
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.cancelled,
                 ),
@@ -290,7 +479,13 @@ async def test_admin_cannot_edit_frozen_fields_of_cancelled_logistics():
 
         async with async_session_factory() as session:
             with pytest.raises(HTTPException) as exc_info:
-                await update_logistics(order.id, created.id, LogisticsUpdate(quantity=Decimal("1")), admin, session)
+                await update_logistics(
+                    order.id,
+                    created.id,
+                    LogisticsUpdate(items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("1"))]),
+                    admin,
+                    session,
+                )
             assert exc_info.value.status_code == 409
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
@@ -304,8 +499,7 @@ async def test_delete_blocked_unless_in_transit_for_any_role():
             created = await create_logistics(
                 order.id,
                 LogisticsCreate(
-                    product_id=product.id,
-                    quantity=Decimal("5"),
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.accepted,
                 ),
@@ -328,7 +522,9 @@ async def test_admin_can_accept_in_transit_shipment():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -364,7 +560,9 @@ async def test_manager_cannot_accept_shipment():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -396,8 +594,7 @@ async def test_accept_rejects_non_in_transit_shipment_with_409():
             created = await create_logistics(
                 order.id,
                 LogisticsCreate(
-                    product_id=product.id,
-                    quantity=Decimal("5"),
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.accepted,
                 ),
@@ -431,7 +628,9 @@ async def test_admin_can_unaccept_and_clears_receipt_fields():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -471,8 +670,7 @@ async def test_manager_cannot_unaccept_shipment():
             created = await create_logistics(
                 order.id,
                 LogisticsCreate(
-                    product_id=product.id,
-                    quantity=Decimal("5"),
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
                     ship_date=SHIP_DATE,
                     status=LogisticsStatus.accepted,
                 ),
@@ -495,7 +693,9 @@ async def test_unaccept_rejects_non_accepted_shipment_with_409():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -515,7 +715,9 @@ async def test_reaccept_after_unaccept_round_trip():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -566,7 +768,9 @@ async def test_update_rejects_status_accepted_with_422():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -588,7 +792,9 @@ async def test_notify_received_calls_notify_with_client_chat_and_tracking():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), tracking="M77-170566", ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    tracking="M77-170566", ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -614,7 +820,9 @@ async def test_observer_cannot_trigger_notify_received():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -635,7 +843,9 @@ async def test_notify_received_returns_409_with_available_groups_when_ambiguous(
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), tracking="M77-AMBIG", ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    tracking="M77-AMBIG", ship_date=SHIP_DATE),
                 owner,
                 session,
             )
@@ -677,7 +887,9 @@ async def test_notify_received_sends_to_chosen_group_when_group_ids_given():
         async with async_session_factory() as session:
             created = await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=product.id, quantity=Decimal("5"), tracking="M77-CHOSEN", ship_date=SHIP_DATE),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    tracking="M77-CHOSEN", ship_date=SHIP_DATE),
                 owner,
                 session,
             )

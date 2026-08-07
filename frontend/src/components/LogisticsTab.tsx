@@ -114,7 +114,9 @@ export default function LogisticsTab({
                     </td>
                     <td className="px-4 py-2.5" data-label="Трекинг" style={{ color: 'var(--color-text)' }}>{l.tracking || '—'}</td>
                     <td className="px-4 py-2.5" data-label="Товар" style={{ color: 'var(--color-text)' }}>
-                      {l.product_name} · {formatNumber(Number(l.quantity))}
+                      {l.items.length === 0
+                        ? '—'
+                        : l.items.map((i) => `${i.product_name} · ${formatNumber(Number(i.quantity))}`).join(', ')}
                     </td>
                     <td className="px-4 py-2.5 text-right" data-label="Дата отправки" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatDate(l.ship_date)}

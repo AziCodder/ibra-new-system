@@ -29,11 +29,12 @@ from app.routers.payment_requests import create_payment_request
 from app.routers.payments import create_payment
 from app.routers.products import create_product
 from app.schemas.ledger_entry import LedgerEntryCreate
-from app.schemas.logistics import LogisticsAccept, LogisticsCreate
+from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsItemIn
 from app.schemas.note import NoteCreate
 from app.schemas.payment import PaymentCreate
 from app.schemas.payment_request import PaymentRequestCreate, PaymentRequestItemIn
 from app.schemas.product import ProductCreate
+from tests.helpers import add_shipment
 
 SHIP_DATE = datetime.now(UTC)
 
@@ -68,11 +69,17 @@ async def _setup_completed_order():
         await session.refresh(product)
 
         # Make the order "ready" so it can actually be completed.
-        session.add(Logistics(
-            order_id=order.id, product_id=product.id, created_by_id=admin.id,
-            quantity=Decimal("10.000"), tracking="COMP-TRK", ship_date=SHIP_DATE,
-            status=LogisticsStatus.accepted, currency="USD", exchange_rate=Decimal("1.000000"),
-        ))
+        await add_shipment(
+                        session,
+                        lines=[(product.id, Decimal("10.000"))],
+                        order_id=order.id,
+                        created_by_id=admin.id,
+                        tracking="COMP-TRK",
+                        ship_date=SHIP_DATE,
+                        status=LogisticsStatus.accepted,
+                        currency="USD",
+                        exchange_rate=Decimal("1.000000"),
+                    )
         pr = PaymentRequest(order_id=order.id, created_by_id=admin.id)
         session.add(pr)
         await session.commit()
@@ -133,7 +140,9 @@ async def test_admin_cannot_create_logistics_on_completed_order():
             with pytest.raises(HTTPException) as exc_info:
                 await create_logistics(
                     order.id,
-                    LogisticsCreate(product_id=product.id, quantity=Decimal("1"), ship_date=SHIP_DATE),
+                    LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("1"))],
+                    ship_date=SHIP_DATE),
                     admin,
                     session,
                 )

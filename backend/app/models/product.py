@@ -18,5 +18,9 @@ class Product(Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3))
     price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     currency: Mapped[str] = mapped_column(String(10), default="USD")
+    # Order-currency units per 1 unit of `currency`. Always 1 when the product is
+    # priced in its order's currency; set explicitly when it isn't, so purchases
+    # can be valued in the order's currency (profit.py).
+    exchange_rate: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=Decimal("1"))
     photo_key: Mapped[str | None] = mapped_column(String(255), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

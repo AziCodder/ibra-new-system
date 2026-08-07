@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.logistics import Logistics
+from app.models.logistics import LogisticsItem
 from app.models.payment_request import PaymentRequestItem
 
 
@@ -13,6 +13,8 @@ async def count_product_dependencies(session: AsyncSession, product_id: int) -> 
         )
     ).scalar_one()
     logistics_count = (
-        await session.execute(select(func.count()).select_from(Logistics).where(Logistics.product_id == product_id))
+        await session.execute(
+            select(func.count()).select_from(LogisticsItem).where(LogisticsItem.product_id == product_id)
+        )
     ).scalar_one()
     return payment_request_items_count + logistics_count

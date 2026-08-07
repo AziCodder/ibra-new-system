@@ -22,13 +22,14 @@ from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.orders import list_orders
-from app.services.logistics_validation import LogisticsValidationError, validate_logistics_quantity
+from app.services.logistics_validation import LogisticsValidationError, validate_logistics_items
 from app.services.order_number import generate_order_number
 from app.services.payment_request_validation import (
     PaymentRequestValidationError,
     validate_payment_request_items,
 )
 from app.services.profit import calculate_profit
+from tests.helpers import add_shipment
 
 _NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -125,12 +126,18 @@ async def test_profit_calculation_tz_example():
             Payment(payment_request_id=pr.id, author_id=mgr.id,
                     amount=Decimal("7000.00"), currency="CNY", exchange_rate=Decimal("11.000000")),
         ])
-        session.add(Logistics(
-            order_id=order.id, product_id=product.id, created_by_id=adm.id,
-            quantity=Decimal("50.000"), tracking="KEYPRF-TRK", ship_date=_NOW,
-            status=LogisticsStatus.accepted,
-            expense_amount=Decimal("40000.00"), currency="RUB", exchange_rate=Decimal("1.000000"),
-        ))
+        await add_shipment(
+                        session,
+                        lines=[(product.id, Decimal("50.000"))],
+                        order_id=order.id,
+                        created_by_id=adm.id,
+                        tracking="KEYPRF-TRK",
+                        ship_date=_NOW,
+                        status=LogisticsStatus.accepted,
+                        expense_amount=Decimal("40000.00"),
+                        currency="RUB",
+                        exchange_rate=Decimal("1.000000"),
+                    )
         session.add(LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.expense,
                                 amount=Decimal("10000.00"), currency="RUB", exchange_rate=Decimal("1.000000")))
         await session.commit()
@@ -192,7 +199,7 @@ async def test_payment_and_shipment_remaining_guards():
                 await validate_payment_request_items(session, [(product.id, Decimal("201.00"))])
 
             with pytest.raises(LogisticsValidationError):
-                await validate_logistics_quantity(session, product.id, Decimal("21"))
+                await validate_logistics_items(session, [(product.id, Decimal("21"))])
     finally:
         async with async_session_factory() as session:
             await session.execute(delete(Product).where(Product.id == product.id))

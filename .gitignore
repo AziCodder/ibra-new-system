@@ -36,6 +36,9 @@ docker-compose.override.yml
 # Uploads
 uploads/
 
+# Database dumps (docker-compose --profile backup) — real customer data
+backups/
+
 # Alembic
 backend/alembic/versions/__pycache__/
 

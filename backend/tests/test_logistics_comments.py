@@ -17,7 +17,7 @@ from app.models.user import User, UserRole
 from app.routers.logistics import create_logistics
 from app.routers.logistics import create_logistics_comment as add_comment
 from app.routers.logistics import list_logistics_comments as list_comments
-from app.schemas.logistics import LogisticsCreate
+from app.schemas.logistics import LogisticsCreate, LogisticsItemIn
 from app.schemas.logistics_comment import LogisticsCommentCreate
 
 SHIP_DATE = datetime.now(UTC)
@@ -63,7 +63,9 @@ async def _setup(logistics_status: LogisticsStatus = LogisticsStatus.in_transit)
     async with async_session_factory() as session:
         logistics = await create_logistics(
             order.id,
-            LogisticsCreate(product_id=product.id, quantity=Decimal("5"), ship_date=SHIP_DATE, status=logistics_status),
+            LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                    ship_date=SHIP_DATE, status=logistics_status),
             creator,
             session,
         )

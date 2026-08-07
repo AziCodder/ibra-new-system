@@ -17,6 +17,8 @@ export interface Product {
   quantity: string
   price: string
   currency: string
+  /** Order-currency units per 1 unit of `currency`; "1" when they are the same. */
+  exchange_rate: string
   photo_key: string | null
   created_at: string
   requested_amount: string | null
@@ -32,7 +34,10 @@ export interface ProductCreate {
   details?: string
   quantity: number
   price: number
+  /** Defaults to the order's currency server-side when omitted. */
   currency?: string
+  /** Required when `currency` differs from the order's; must be 1 otherwise. */
+  exchange_rate?: number
   photo_key?: string | null
 }
 

@@ -18,7 +18,7 @@ from app.models.user import User, UserRole
 from app.routers.logistics import create_logistics
 from app.routers.payment_requests import create_payment_request
 from app.routers.payments import create_payment
-from app.schemas.logistics import LogisticsCreate
+from app.schemas.logistics import LogisticsCreate, LogisticsItemIn
 from app.schemas.payment import PaymentCreate
 from app.schemas.payment_request import PaymentRequestCreate, PaymentRequestItemIn
 
@@ -88,7 +88,9 @@ async def test_concurrent_logistics_creation_does_not_overship():
                 try:
                     out = await create_logistics(
                         order.id,
-                        LogisticsCreate(product_id=product.id, quantity=Decimal("6"), ship_date=datetime.now(UTC)),
+                        LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("6"))],
+                    ship_date=datetime.now(UTC)),
                         owner,
                         session,
                     )

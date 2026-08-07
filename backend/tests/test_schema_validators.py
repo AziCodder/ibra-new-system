@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.ledger_entry import LedgerEntryCreate
-from app.schemas.logistics import LogisticsCreate
+from app.schemas.logistics import LogisticsCreate, LogisticsItemIn
 from app.schemas.order import OrderCreate
 from app.schemas.payment import PaymentCreate
 from app.schemas.product import ProductCreate
@@ -37,12 +37,16 @@ def test_order_accepts_known_currency():
 
 
 def test_tracking_is_trimmed():
-    created = LogisticsCreate(product_id=1, quantity=Decimal("1"), ship_date=datetime.now(UTC), tracking="  M77-1  ")
+    created = LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=1, quantity=Decimal("1"))],
+                    ship_date=datetime.now(UTC), tracking="  M77-1  ")
     assert created.tracking == "M77-1"
 
 
 def test_whitespace_only_tracking_becomes_none():
-    created = LogisticsCreate(product_id=1, quantity=Decimal("1"), ship_date=datetime.now(UTC), tracking="   ")
+    created = LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=1, quantity=Decimal("1"))],
+                    ship_date=datetime.now(UTC), tracking="   ")
     assert created.tracking is None
 
 

@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.logistics import Logistics, LogisticsStatus
+from app.models.logistics import Logistics, LogisticsItem, LogisticsStatus
 
 
 @dataclass
@@ -41,13 +41,14 @@ async def get_products_logistics_totals(
     rows = (
         await session.execute(
             select(
-                Logistics.product_id,
+                LogisticsItem.product_id,
                 Logistics.id,
                 Logistics.tracking,
-                Logistics.quantity,
+                LogisticsItem.quantity,
                 Logistics.status,
             )
-            .where(Logistics.product_id.in_(product_ids))
+            .join(Logistics, LogisticsItem.logistics_id == Logistics.id)
+            .where(LogisticsItem.product_id.in_(product_ids))
             .order_by(Logistics.ship_date, Logistics.id)
         )
     ).all()

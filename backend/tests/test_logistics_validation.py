@@ -14,8 +14,9 @@ from app.models.user import User, UserRole
 from app.services.logistics_validation import (
     LogisticsValidationError,
     get_product_shipped_remaining,
-    validate_logistics_quantity,
+    validate_logistics_items,
 )
+from tests.helpers import add_shipment
 
 
 async def _setup():
@@ -82,15 +83,13 @@ async def test_get_product_shipped_remaining_decreases_after_existing_shipment()
     client, supplier, admin, order, product = await _setup()
     try:
         async with async_session_factory() as session:
-            session.add(
-                Logistics(
+            await add_shipment(
+                    session,
+                    lines=[(product.id, Decimal("10"))],
                     order_id=order.id,
-                    product_id=product.id,
                     created_by_id=admin.id,
-                    quantity=Decimal("10"),
                     ship_date=datetime.now(UTC),
                 )
-            )
             await session.commit()
 
         async with async_session_factory() as session:
@@ -105,19 +104,19 @@ async def test_validate_accepts_quantity_within_remaining():
     client, supplier, admin, order, product = await _setup()
     try:
         async with async_session_factory() as session:
-            session.add(
-                Logistics(
+            await add_shipment(
+                    session,
+                    lines=[(product.id, Decimal("10"))],
                     order_id=order.id,
-                    product_id=product.id,
                     created_by_id=admin.id,
-                    quantity=Decimal("10"),
                     ship_date=datetime.now(UTC),
                 )
-            )
             await session.commit()
 
         async with async_session_factory() as session:
-            await validate_logistics_quantity(session, product.id, Decimal("10"))
+            await validate_logistics_items(
+                session, [(product.id, Decimal("10"))]
+            )
     finally:
         await _cleanup(client.id, supplier.id)
 
@@ -127,20 +126,20 @@ async def test_validate_rejects_quantity_exceeding_remaining():
     client, supplier, admin, order, product = await _setup()
     try:
         async with async_session_factory() as session:
-            session.add(
-                Logistics(
+            await add_shipment(
+                    session,
+                    lines=[(product.id, Decimal("10"))],
                     order_id=order.id,
-                    product_id=product.id,
                     created_by_id=admin.id,
-                    quantity=Decimal("10"),
                     ship_date=datetime.now(UTC),
                 )
-            )
             await session.commit()
 
         async with async_session_factory() as session:
             with pytest.raises(LogisticsValidationError, match="exceeds shipped remaining balance"):
-                await validate_logistics_quantity(session, product.id, Decimal("11"))
+                await validate_logistics_items(
+                session, [(product.id, Decimal("11"))]
+            )
     finally:
         await _cleanup(client.id, supplier.id)
 
@@ -150,16 +149,14 @@ async def test_cancelled_shipment_excluded_from_shipped_total():
     client, supplier, admin, order, product = await _setup()
     try:
         async with async_session_factory() as session:
-            session.add(
-                Logistics(
+            await add_shipment(
+                    session,
+                    lines=[(product.id, Decimal("15"))],
                     order_id=order.id,
-                    product_id=product.id,
                     created_by_id=admin.id,
-                    quantity=Decimal("15"),
                     ship_date=datetime.now(UTC),
                     status=LogisticsStatus.cancelled,
                 )
-            )
             await session.commit()
 
         async with async_session_factory() as session:
@@ -175,21 +172,20 @@ async def test_validate_exclude_logistics_id_allows_reediting_same_shipment():
     client, supplier, admin, order, product = await _setup()
     try:
         async with async_session_factory() as session:
-            logistics = Logistics(
-                order_id=order.id,
-                product_id=product.id,
-                created_by_id=admin.id,
-                quantity=Decimal("20"),
-                ship_date=datetime.now(UTC),
-            )
-            session.add(logistics)
+            logistics = await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("20"))],
+                            order_id=order.id,
+                            created_by_id=admin.id,
+                            ship_date=datetime.now(UTC),
+                        )
             await session.commit()
             await session.refresh(logistics)
 
         async with async_session_factory() as session:
             # Re-saving the same shipment with the same quantity should not double-count itself.
-            await validate_logistics_quantity(
-                session, product.id, Decimal("20"), exclude_logistics_id=logistics.id
+            await validate_logistics_items(
+                session, [(product.id, Decimal("20"))], exclude_logistics_id=logistics.id
             )
     finally:
         await _cleanup(client.id, supplier.id)

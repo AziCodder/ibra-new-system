@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.schemas.client import ClientCreate
 from app.schemas.ledger_entry import LedgerEntryCreate, LedgerEntryType
-from app.schemas.logistics import LogisticsAccept, LogisticsCreate
+from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsItemIn
 from app.schemas.payment import PaymentCreate
 from app.schemas.product import ProductCreate
 from app.schemas.supplier import SupplierCreate
@@ -92,9 +92,8 @@ def test_logistics_create_rejects_negative_exchange_rate():
 
     with pytest.raises(ValidationError):
         LogisticsCreate(
-            product_id=1,
-            quantity=Decimal("1"),
-            ship_date=datetime.now(timezone.utc),
+                    items=[LogisticsItemIn(product_id=1, quantity=Decimal("1"))],
+                    ship_date=datetime.now(timezone.utc),
             exchange_rate=Decimal("-2"),
         )
 
@@ -103,9 +102,8 @@ def test_logistics_create_allows_null_exchange_rate():
     from datetime import datetime, timezone
 
     row = LogisticsCreate(
-        product_id=1,
-        quantity=Decimal("1"),
-        ship_date=datetime.now(timezone.utc),
+                    items=[LogisticsItemIn(product_id=1, quantity=Decimal("1"))],
+                    ship_date=datetime.now(timezone.utc),
         exchange_rate=None,
     )
     assert row.exchange_rate is None

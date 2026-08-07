@@ -1,11 +1,13 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.models.client import Client
-from app.models.logistics import Logistics, LogisticsStatus
+from app.models.logistics import Logistics, LogisticsItem, LogisticsStatus
 from app.models.logistics_comment import LogisticsComment
 from app.models.product import Product
 from app.models.user import User, UserRole
@@ -13,13 +15,16 @@ from app.routers.auth import get_current_user
 from app.schemas.logistics import (
     LogisticsAccept,
     LogisticsCreate,
+    LogisticsItemIn,
+    LogisticsItemOut,
     LogisticsOut,
     LogisticsUpdate,
     NotifyLogisticsReceivedIn,
 )
 from app.schemas.logistics_comment import LogisticsCommentCreate, LogisticsCommentOut
 from app.services.action_log import log_action
-from app.services.logistics_validation import LogisticsValidationError, validate_logistics_quantity
+from app.services.logistics_items import ShipmentLine, get_logistics_items
+from app.services.logistics_validation import LogisticsValidationError, validate_logistics_items
 from app.services.notifications import notify
 from app.services.order_access import get_order_for_read as _get_order_for_read
 from app.services.order_access import get_order_for_write as _get_order_for_write
@@ -28,12 +33,26 @@ from app.services.telegram_groups import get_client_send_targets
 router = APIRouter(prefix="/api/orders/{order_id}/logistics", tags=["logistics"])
 
 
-async def _get_product_in_order(order_id: int, product_id: int, session: AsyncSession) -> Product:
-    result = await session.execute(select(Product).where(Product.id == product_id, Product.order_id == order_id))
-    product = result.scalar_one_or_none()
-    if not product:
-        raise HTTPException(status_code=422, detail=f"Product {product_id} does not belong to this order")
-    return product
+async def _check_products_in_order(order_id: int, product_ids: list[int], session: AsyncSession) -> None:
+    found = {
+        row[0]
+        for row in (
+            await session.execute(
+                select(Product.id).where(Product.id.in_(product_ids), Product.order_id == order_id)
+            )
+        ).all()
+    }
+    missing = set(product_ids) - found
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Products {sorted(missing)} do not belong to this order")
+
+
+async def _replace_items(logistics_id: int, items: list[LogisticsItemIn], session: AsyncSession) -> None:
+    await session.execute(delete(LogisticsItem).where(LogisticsItem.logistics_id == logistics_id))
+    for item in items:
+        session.add(
+            LogisticsItem(logistics_id=logistics_id, product_id=item.product_id, quantity=item.quantity)
+        )
 
 
 async def _get_logistics_or_404(order_id: int, logistics_id: int, session: AsyncSession) -> Logistics:
@@ -80,18 +99,19 @@ def _require_admin(user: User) -> None:
         raise HTTPException(status_code=403, detail="Only admins can accept or unaccept a shipment")
 
 
-async def _to_logistics_out(logistics: Logistics, session: AsyncSession) -> LogisticsOut:
-    product = (await session.execute(select(Product).where(Product.id == logistics.product_id))).scalar_one()
-    creator = (await session.execute(select(User).where(User.id == logistics.created_by_id))).scalar_one()
-
+def _build_logistics_out(
+    logistics: Logistics, creator_name: str, lines: list[ShipmentLine]
+) -> LogisticsOut:
     return LogisticsOut(
         id=logistics.id,
         order_id=logistics.order_id,
-        product_id=logistics.product_id,
-        product_name=product.name,
+        items=[
+            LogisticsItemOut(product_id=line.product_id, product_name=line.product_name, quantity=line.quantity)
+            for line in lines
+        ],
         created_by_id=logistics.created_by_id,
-        created_by_name=creator.full_name,
-        quantity=logistics.quantity,
+        created_by_name=creator_name,
+        total_quantity=sum((line.quantity for line in lines), start=Decimal("0")),
         tracking=logistics.tracking,
         ship_date=logistics.ship_date,
         invoice_file_key=logistics.invoice_file_key,
@@ -106,6 +126,14 @@ async def _to_logistics_out(logistics: Logistics, session: AsyncSession) -> Logi
     )
 
 
+async def _to_logistics_out(logistics: Logistics, session: AsyncSession) -> LogisticsOut:
+    creator_name = (
+        await session.execute(select(User.full_name).where(User.id == logistics.created_by_id))
+    ).scalar_one()
+    items = (await get_logistics_items(session, [logistics.id])).get(logistics.id, [])
+    return _build_logistics_out(logistics, creator_name, items)
+
+
 @router.get("/", response_model=list[LogisticsOut])
 async def list_logistics(
     order_id: int,
@@ -114,10 +142,19 @@ async def list_logistics(
 ):
     await _get_order_for_read(order_id, user, session)
 
-    result = await session.execute(
-        select(Logistics).where(Logistics.order_id == order_id).order_by(Logistics.created_at)
-    )
-    return [await _to_logistics_out(logistics, session) for logistics in result.scalars().all()]
+    rows = (
+        await session.execute(
+            select(Logistics, User.full_name)
+            .join(User, Logistics.created_by_id == User.id)
+            .where(Logistics.order_id == order_id)
+            .order_by(Logistics.created_at)
+        )
+    ).all()
+    items_by_logistics = await get_logistics_items(session, [logistics.id for logistics, _ in rows])
+    return [
+        _build_logistics_out(logistics, creator_name, items_by_logistics.get(logistics.id, []))
+        for logistics, creator_name in rows
+    ]
 
 
 @router.get("/{logistics_id}", response_model=LogisticsOut)
@@ -140,21 +177,19 @@ async def create_logistics(
     session: AsyncSession = Depends(get_session),
 ):
     await _get_order_for_write(order_id, user, session)
-    await _get_product_in_order(order_id, body.product_id, session)
+    await _check_products_in_order(order_id, [item.product_id for item in body.items], session)
 
     if body.status == LogisticsStatus.accepted:
         _require_admin(user)
 
     try:
-        await validate_logistics_quantity(session, body.product_id, body.quantity)
+        await validate_logistics_items(session, [(item.product_id, item.quantity) for item in body.items])
     except LogisticsValidationError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
 
     logistics = Logistics(
         order_id=order_id,
-        product_id=body.product_id,
         created_by_id=user.id,
-        quantity=body.quantity,
         tracking=body.tracking,
         ship_date=body.ship_date,
         invoice_file_key=body.invoice_file_key,
@@ -167,6 +202,8 @@ async def create_logistics(
         acceptance_note=body.acceptance_note,
     )
     session.add(logistics)
+    await session.flush()
+    await _replace_items(logistics.id, body.items, session)
     try:
         await session.commit()
     except IntegrityError:
@@ -194,13 +231,21 @@ async def update_logistics(
     if updates.get("status") == LogisticsStatus.accepted:
         raise HTTPException(status_code=422, detail="Use POST /accept to accept a shipment")
 
-    if "quantity" in updates:
+    # Lines are stored in their own table, so they never go through setattr below.
+    new_items = body.items if "items" in updates else None
+    updates.pop("items", None)
+
+    if new_items is not None:
+        await _check_products_in_order(order_id, [item.product_id for item in new_items], session)
         try:
-            await validate_logistics_quantity(
-                session, logistics.product_id, updates["quantity"], exclude_logistics_id=logistics.id
+            await validate_logistics_items(
+                session,
+                [(item.product_id, item.quantity) for item in new_items],
+                exclude_logistics_id=logistics.id,
             )
         except LogisticsValidationError as e:
             raise HTTPException(status_code=422, detail=str(e)) from None
+        await _replace_items(logistics.id, new_items, session)
 
     for field, value in updates.items():
         setattr(logistics, field, value)

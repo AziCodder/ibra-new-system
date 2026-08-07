@@ -19,6 +19,7 @@ from app.routers.orders import OrderStatusIn, create_order, set_order_status
 from app.schemas.logistics import LogisticsAccept
 from app.schemas.order import OrderCreate
 from app.services.action_log import log_action
+from tests.helpers import add_shipment
 
 SHIP_DATE = datetime.now(UTC)
 
@@ -154,11 +155,15 @@ async def test_accept_logistics_writes_action_log():
             await session.commit()
             await session.refresh(product)
 
-            logistics = Logistics(
-                order_id=order.id, product_id=product.id, created_by_id=manager.id,
-                quantity=Decimal("5"), tracking="TRK", ship_date=SHIP_DATE, status=LogisticsStatus.in_transit,
-            )
-            session.add(logistics)
+            logistics = await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("5"))],
+                            order_id=order.id,
+                            created_by_id=manager.id,
+                            tracking="TRK",
+                            ship_date=SHIP_DATE,
+                            status=LogisticsStatus.in_transit,
+                        )
             await session.commit()
             await session.refresh(logistics)
             order_id, logistics_id = order.id, logistics.id

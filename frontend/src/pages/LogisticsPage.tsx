@@ -216,11 +216,20 @@ export default function LogisticsPage() {
                     </td>
                     <td className="px-4 py-3" data-label="Клиент" style={{ color: 'var(--color-text)' }}>{lg.client_name}</td>
                     <td className="px-4 py-3" data-label="Менеджер" style={{ color: 'var(--color-muted)' }}>{lg.manager_name}</td>
-                    <td className="px-4 py-3 max-w-[140px] truncate" data-label="Товар" style={{ color: 'var(--color-muted)' }} title={lg.product_name}>
-                      {lg.product_name}
+                    <td
+                      className="px-4 py-3 max-w-[140px] truncate"
+                      data-label="Товар"
+                      style={{ color: 'var(--color-muted)' }}
+                      title={lg.items.map((i) => `${i.product_name} · ${formatNum(i.quantity)}`).join('\n')}
+                    >
+                      {lg.items.length === 0
+                        ? '—'
+                        : lg.items.length === 1
+                          ? lg.items[0].product_name
+                          : `${lg.items[0].product_name} +${lg.items.length - 1}`}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap" data-label="Кол-во" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
-                      {formatNum(lg.quantity)}
+                      {formatNum(lg.total_quantity)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap" data-label="Отправлено" style={{ color: 'var(--color-muted)' }}>
                       {new Date(lg.ship_date).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: '2-digit' })}

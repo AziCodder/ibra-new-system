@@ -1,6 +1,6 @@
 from app.models.client import Client
 from app.models.ledger_entry import LedgerEntry
-from app.models.logistics import Logistics
+from app.models.logistics import Logistics, LogisticsItem
 from app.models.logistics_comment import LogisticsComment
 from app.models.note import Note
 from app.models.order import Order
@@ -18,6 +18,7 @@ __all__ = [
     "LedgerEntry",
     "Logistics",
     "LogisticsComment",
+    "LogisticsItem",
     "Note",
     "Order",
     "OrderSortPosition",

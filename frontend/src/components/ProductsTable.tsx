@@ -22,6 +22,9 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
   const selectedProduct = products?.find((p) => p.id === selectedProductId) ?? null
 
   const totalsByCurrency = new Map<string, { quantity: number; sum: number }>()
+  // Products may be priced in different currencies; each carries its rate to the
+  // order's, so a single comparable grand total is still available.
+  let grandTotalInOrderCurrency = 0
   for (const product of products ?? []) {
     const quantity = Number(product.quantity)
     const sum = quantity * Number(product.price)
@@ -30,7 +33,9 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
       quantity: existing.quantity + quantity,
       sum: existing.sum + sum,
     })
+    grandTotalInOrderCurrency += sum * Number(product.exchange_rate ?? 1)
   }
+  const hasForeignCurrency = [...totalsByCurrency.keys()].some((c) => c !== orderCurrency)
 
   return (
     <div>
@@ -130,6 +135,18 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
                   </td>
                 </tr>
               ))}
+              {hasForeignCurrency && (
+                <tr style={{ borderTop: '1px solid var(--color-border)', background: 'var(--color-surface-2)' }}>
+                  <td className="px-4 py-2.5 font-semibold" style={{ color: 'var(--color-text)' }}>
+                    Всего в валюте заказа
+                  </td>
+                  <td className="px-4 py-2.5" />
+                  <td className="px-4 py-2.5" />
+                  <td className="px-4 py-2.5 text-right font-semibold" data-label="Сумма" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatNumber(grandTotalInOrderCurrency)} {orderCurrency}
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>

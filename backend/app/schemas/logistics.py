@@ -14,9 +14,19 @@ def _strip_tracking(value: str | None) -> str | None:
     return stripped or None
 
 
-class LogisticsCreate(BaseModel):
+class LogisticsItemIn(BaseModel):
     product_id: int
     quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
+
+
+class LogisticsItemOut(BaseModel):
+    product_id: int
+    product_name: str
+    quantity: Decimal
+
+
+class LogisticsCreate(BaseModel):
+    items: list[LogisticsItemIn] = Field(min_length=1)
     tracking: str | None = None
     ship_date: datetime
     invoice_file_key: str | None = None
@@ -37,7 +47,8 @@ class LogisticsCreate(BaseModel):
 class LogisticsUpdate(BaseModel):
     """Excludes receipt fields — those only change via accept/unaccept, atomically."""
 
-    quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
+    # Replaces the shipment's lines wholesale when present, like payment request items.
+    items: list[LogisticsItemIn] | None = Field(default=None, min_length=1)
     tracking: str | None = None
     ship_date: datetime | None = None
     invoice_file_key: str | None = None
@@ -61,11 +72,12 @@ class LogisticsAccept(BaseModel):
 class LogisticsOut(BaseModel):
     id: int
     order_id: int
-    product_id: int
-    product_name: str
+    items: list[LogisticsItemOut]
     created_by_id: int
     created_by_name: str
-    quantity: Decimal
+    # Sum of the lines' quantities — only meaningful as a rough size indicator
+    # when a shipment mixes products measured in different units.
+    total_quantity: Decimal
     tracking: str | None
     ship_date: datetime
     invoice_file_key: str | None

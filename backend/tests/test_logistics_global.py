@@ -13,6 +13,7 @@ from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.logistics_global import list_all_logistics
+from tests.helpers import add_shipment
 
 SHIP_DATE = datetime.now(UTC)
 
@@ -76,23 +77,29 @@ async def _setup():
         await session.refresh(product_a)
         await session.refresh(product_b)
 
-        logistics_a = Logistics(
-            order_id=order_a.id, product_id=product_a.id, created_by_id=owner.id,
-            quantity=Decimal("10"), tracking="TRACK-AAA", ship_date=SHIP_DATE,
-            status=LogisticsStatus.in_transit,
-        )
-        session.add(logistics_a)
+        logistics_a = await add_shipment(
+                          session,
+                          lines=[(product_a.id, Decimal("10"))],
+                          order_id=order_a.id,
+                          created_by_id=owner.id,
+                          tracking="TRACK-AAA",
+                          ship_date=SHIP_DATE,
+                          status=LogisticsStatus.in_transit,
+                      )
         await session.commit()
         await session.refresh(logistics_a)
 
         # Separate commit so created_at (server_default now()) differs from logistics_a,
         # since Postgres now() is stable within a single transaction — needed for sort test.
-        logistics_b = Logistics(
-            order_id=order_b.id, product_id=product_b.id, created_by_id=other.id,
-            quantity=Decimal("5"), tracking="TRACK-BBB", ship_date=SHIP_DATE + timedelta(hours=1),
-            status=LogisticsStatus.accepted,
-        )
-        session.add(logistics_b)
+        logistics_b = await add_shipment(
+                          session,
+                          lines=[(product_b.id, Decimal("5"))],
+                          order_id=order_b.id,
+                          created_by_id=other.id,
+                          tracking="TRACK-BBB",
+                          ship_date=SHIP_DATE + timedelta(hours=1),
+                          status=LogisticsStatus.accepted,
+                      )
         await session.commit()
         await session.refresh(logistics_b)
 

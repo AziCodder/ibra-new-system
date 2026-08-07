@@ -1,13 +1,19 @@
 export type LogisticsStatus = 'in_transit' | 'accepted' | 'cancelled'
 
+export interface LogisticsItem {
+  product_id: number
+  product_name: string
+  quantity: string
+}
+
 export interface Logistics {
   id: number
   order_id: number
-  product_id: number
-  product_name: string
+  /** A shipment carries one or more product lines. */
+  items: LogisticsItem[]
   created_by_id: number
   created_by_name: string
-  quantity: string
+  total_quantity: string
   tracking: string
   ship_date: string
   invoice_file_key: string | null
@@ -21,9 +27,13 @@ export interface Logistics {
   created_at: string
 }
 
-export interface LogisticsCreate {
+export interface LogisticsItemInput {
   product_id: number
   quantity: number
+}
+
+export interface LogisticsCreate {
+  items: LogisticsItemInput[]
   tracking?: string
   ship_date: string
   invoice_file_key?: string | null
@@ -31,7 +41,8 @@ export interface LogisticsCreate {
 }
 
 export interface LogisticsUpdate {
-  quantity?: number
+  /** Replaces the shipment's whole line list when present. */
+  items?: LogisticsItemInput[]
   tracking?: string
   ship_date?: string
   invoice_file_key?: string | null

@@ -20,6 +20,7 @@ from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.orders import OrderStatusIn, set_order_status
 from app.services.order_metrics import snapshot_order_metrics
+from tests.helpers import add_shipment
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -58,13 +59,18 @@ async def _setup():
 async def _setup_ready_order(client, supplier, owner, admin, order, product):
     """Add accepted logistics covering full qty + fully paid payment request."""
     async with async_session_factory() as session:
-        session.add(Logistics(
-            order_id=order.id, product_id=product.id, created_by_id=admin.id,
-            quantity=Decimal("10.000"), tracking="OST-TRK",
-            ship_date=order.created_at,
-            status=LogisticsStatus.accepted,
-            expense_amount=None, currency="USD", exchange_rate=Decimal("1.000000"),
-        ))
+        await add_shipment(
+                        session,
+                        lines=[(product.id, Decimal("10.000"))],
+                        order_id=order.id,
+                        created_by_id=admin.id,
+                        tracking="OST-TRK",
+                        ship_date=order.created_at,
+                        status=LogisticsStatus.accepted,
+                        expense_amount=None,
+                        currency="USD",
+                        exchange_rate=Decimal("1.000000"),
+                    )
         pr = PaymentRequest(order_id=order.id, created_by_id=owner.id)
         session.add(pr)
         await session.commit()

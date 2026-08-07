@@ -21,9 +21,11 @@ class ProductCreate(BaseModel):
     details: str = ""
     quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
     price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
-    # Optional: the server always uses the order's currency (see create_product) —
-    # if provided, it's only validated to match, never used to override it.
+    # Defaults to the order's currency when omitted (see create_product).
     currency: Currency | None = None
+    # Order-currency units per 1 unit of `currency`. Required when the two
+    # currencies differ; must be 1 (or omitted) when they match.
+    exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=6)
     photo_key: str | None = None
 
     @field_validator("name")
@@ -39,6 +41,7 @@ class ProductUpdate(BaseModel):
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
     price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
     currency: Currency | None = None
+    exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=6)
     photo_key: str | None = None
 
     @field_validator("name")
@@ -66,6 +69,8 @@ class ProductOut(BaseModel):
     quantity: Decimal
     price: Decimal
     currency: Currency
+    # Rate to the order's currency; 1 whenever the product is priced in it.
+    exchange_rate: Decimal
     photo_key: str | None
     created_at: datetime
     # None = no payment request has ever included this product yet

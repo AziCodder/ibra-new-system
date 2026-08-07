@@ -21,7 +21,7 @@ from app.routers.logistics import accept_logistics, create_logistics, update_log
 from app.routers.payment_requests import create_payment_request
 from app.routers.payments import create_payment
 from app.routers.products import create_product, delete_product, list_products, update_product
-from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsUpdate
+from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsItemIn, LogisticsUpdate
 from app.schemas.payment import PaymentCreate
 from app.schemas.payment_request import PaymentRequestCreate, PaymentRequestItemIn
 from app.schemas.product import ProductCreate, ProductUpdate
@@ -210,7 +210,9 @@ async def test_cannot_lower_quantity_below_already_shipped():
         async with async_session_factory() as session:
             await create_logistics(
                 order.id,
-                LogisticsCreate(product_id=created.id, quantity=Decimal("6"), ship_date=datetime.now(UTC)),
+                LogisticsCreate(
+                    items=[LogisticsItemIn(product_id=created.id, quantity=Decimal("6"))],
+                    ship_date=datetime.now(UTC)),
                 owner,
                 session,
             )
@@ -321,7 +323,7 @@ async def test_create_product_rejects_currency_mismatch():
 
 
 @pytest.mark.asyncio
-async def test_update_product_rejects_currency_change_to_non_order_currency():
+async def test_update_product_to_foreign_currency_requires_an_exchange_rate():
     client, owner, other, observer, supplier, order = await _setup()
     try:
         async with async_session_factory() as session:
@@ -331,10 +333,80 @@ async def test_update_product_rejects_currency_change_to_non_order_currency():
                 owner,
                 session,
             )
+            assert created.currency == "USD"
+            assert created.exchange_rate == Decimal("1")
 
         async with async_session_factory() as session:
             with pytest.raises(HTTPException) as exc_info:
                 await update_product(order.id, created.id, ProductUpdate(currency="CNY"), owner, session)
+            assert exc_info.value.status_code == 422
+            assert "Exchange rate is required" in exc_info.value.detail
+
+        async with async_session_factory() as session:
+            updated = await update_product(
+                order.id,
+                created.id,
+                ProductUpdate(currency="CNY", exchange_rate=Decimal("0.14")),
+                owner,
+                session,
+            )
+            assert updated.currency == "CNY"
+            assert updated.exchange_rate == Decimal("0.140000")
+
+        async with async_session_factory() as session:
+            # Switching back to the order's currency drops the now-meaningless rate.
+            back = await update_product(order.id, created.id, ProductUpdate(currency="USD"), owner, session)
+            assert back.exchange_rate == Decimal("1")
+    finally:
+        await _cleanup(client.id, [owner.id, other.id, observer.id], supplier.id)
+
+
+@pytest.mark.asyncio
+async def test_create_product_in_a_currency_other_than_the_orders():
+    client, owner, other, observer, supplier, order = await _setup()
+    try:
+        async with async_session_factory() as session:
+            created = await create_product(
+                order.id,
+                ProductCreate(
+                    supplier_id=supplier.id,
+                    name="Imported widget",
+                    quantity=Decimal("10"),
+                    price=Decimal("850"),
+                    currency="CNY",
+                    exchange_rate=Decimal("0.1385"),
+                ),
+                owner,
+                session,
+            )
+            assert created.currency == "CNY"
+            assert created.exchange_rate == Decimal("0.138500")
+
+        async with async_session_factory() as session:
+            with pytest.raises(HTTPException) as exc_info:
+                await create_product(
+                    order.id,
+                    ProductCreate(
+                        supplier_id=supplier.id, name="No rate", quantity=Decimal("1"), price=Decimal("1"),
+                        currency="EUR",
+                    ),
+                    owner,
+                    session,
+                )
+            assert exc_info.value.status_code == 422
+
+        async with async_session_factory() as session:
+            # A rate other than 1 makes no sense in the order's own currency.
+            with pytest.raises(HTTPException) as exc_info:
+                await create_product(
+                    order.id,
+                    ProductCreate(
+                        supplier_id=supplier.id, name="Bogus rate", quantity=Decimal("1"), price=Decimal("1"),
+                        currency="USD", exchange_rate=Decimal("2"),
+                    ),
+                    owner,
+                    session,
+                )
             assert exc_info.value.status_code == 422
     finally:
         await _cleanup(client.id, [owner.id, other.id, observer.id], supplier.id)
@@ -440,7 +512,8 @@ async def test_product_reflects_shipped_and_accepted_quantities():
             first = await create_logistics(
                 order.id,
                 LogisticsCreate(
-                    product_id=created.id, quantity=Decimal("4"), tracking="PRODSUM-A", ship_date=datetime.now(UTC)
+                    items=[LogisticsItemIn(product_id=created.id, quantity=Decimal("4"))],
+                    tracking="PRODSUM-A", ship_date=datetime.now(UTC)
                 ),
                 owner,
                 session,
@@ -450,7 +523,8 @@ async def test_product_reflects_shipped_and_accepted_quantities():
             second = await create_logistics(
                 order.id,
                 LogisticsCreate(
-                    product_id=created.id, quantity=Decimal("6"), tracking="PRODSUM-B", ship_date=datetime.now(UTC)
+                    items=[LogisticsItemIn(product_id=created.id, quantity=Decimal("6"))],
+                    tracking="PRODSUM-B", ship_date=datetime.now(UTC)
                 ),
                 owner,
                 session,

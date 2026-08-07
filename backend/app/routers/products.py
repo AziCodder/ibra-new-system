@@ -42,6 +42,7 @@ def _to_product_out(
         quantity=product.quantity,
         price=product.price,
         currency=product.currency,
+        exchange_rate=product.exchange_rate,
         photo_key=product.photo_key,
         created_at=product.created_at,
         requested_amount=requested_amount,
@@ -58,6 +59,29 @@ def _to_product_out(
             for shipment in logistics.shipments
         ],
     )
+
+
+def _resolve_exchange_rate(currency: str, order_currency: str, rate: Decimal | None) -> Decimal:
+    """Normalise a product's rate to the order's currency, or raise 422.
+
+    A product priced in the order's own currency is always rate 1 — accepting
+    anything else there would silently distort the profit calculation. A product
+    priced in another currency has no sensible default, so the rate is required.
+    """
+    if currency == order_currency:
+        if rate is not None and rate != Decimal("1"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Exchange rate must be 1 when the product is priced in the order's currency ({order_currency})",
+            )
+        return Decimal("1")
+
+    if rate is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Exchange rate is required: product currency {currency} differs from the order's {order_currency}",
+        )
+    return rate
 
 
 async def _get_supplier_or_404(supplier_id: int, session: AsyncSession) -> Supplier:
@@ -107,11 +131,8 @@ async def create_product(
     order = await _get_order_for_write(order_id, user, session)
     supplier = await _get_supplier_or_404(body.supplier_id, session)
 
-    if body.currency is not None and body.currency != order.currency:
-        raise HTTPException(
-            status_code=422,
-            detail="Product currency must match the order's currency",
-        )
+    currency = body.currency or order.currency
+    exchange_rate = _resolve_exchange_rate(currency, order.currency, body.exchange_rate)
 
     product = Product(
         order_id=order_id,
@@ -120,7 +141,8 @@ async def create_product(
         details=body.details,
         quantity=body.quantity,
         price=body.price,
-        currency=order.currency,
+        currency=currency,
+        exchange_rate=exchange_rate,
         photo_key=body.photo_key,
     )
     session.add(product)
@@ -167,17 +189,27 @@ async def update_product(
             )
 
     if "currency" in updates and updates["currency"] != product.currency:
-        if updates["currency"] != order.currency:
-            raise HTTPException(
-                status_code=422,
-                detail="Product currency must match the order's currency",
-            )
+        # Item amounts on existing requests are denominated in the old currency —
+        # re-labelling the product would silently reinterpret every one of them.
         already_requested = await get_product_already_requested(session, product_id)
         if already_requested > 0:
             raise HTTPException(
                 status_code=422,
                 detail="Cannot change currency: product has existing payment requests",
             )
+
+    if "currency" in updates or "exchange_rate" in updates:
+        new_currency = updates.get("currency", product.currency)
+        if "exchange_rate" in updates:
+            new_rate = updates["exchange_rate"]
+        elif new_currency != product.currency:
+            # The stored rate described the *old* currency and says nothing about
+            # the new one — so the caller has to supply one (or be switching back
+            # to the order's currency, where _resolve_exchange_rate settles on 1).
+            new_rate = None
+        else:
+            new_rate = product.exchange_rate
+        updates["exchange_rate"] = _resolve_exchange_rate(new_currency, order.currency, new_rate)
 
     for field, value in updates.items():
         setattr(product, field, value)

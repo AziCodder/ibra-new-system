@@ -5,10 +5,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ledger_entry import LedgerEntry, LedgerEntryType
-from app.models.logistics import Logistics, LogisticsStatus
+from app.models.logistics import Logistics, LogisticsItem, LogisticsStatus
 from app.models.order import Order
 from app.models.payment import Payment
-from app.models.payment_request import PaymentRequest
+from app.models.payment_request import PaymentRequest, PaymentRequestItem
 from app.models.product import Product
 
 
@@ -49,8 +49,9 @@ async def _check_readiness(order_id: int, session: AsyncSession) -> bool:
 
     # Correlated subquery: accepted shipped quantity per product
     shipped_sub = (
-        select(func.coalesce(func.sum(Logistics.quantity), Decimal("0")))
-        .where(Logistics.product_id == Product.id, Logistics.status == LogisticsStatus.accepted)
+        select(func.coalesce(func.sum(LogisticsItem.quantity), Decimal("0")))
+        .join(Logistics, LogisticsItem.logistics_id == Logistics.id)
+        .where(LogisticsItem.product_id == Product.id, Logistics.status == LogisticsStatus.accepted)
         .correlate(Product)
         .scalar_subquery()
     )
@@ -64,13 +65,73 @@ async def _check_readiness(order_id: int, session: AsyncSession) -> bool:
     return undershipped is None
 
 
+async def _calculate_purchases(order_id: int, session: AsyncSession) -> Decimal:
+    """Total actually paid for the order's products, in the order's currency.
+
+    Two conversions stack, because two different currencies can be in play:
+
+    1. `Payment.exchange_rate` converts a payment into the *payment request's*
+       currency — the currency the products on that request are priced in. This
+       is what the remaining-balance check in payment_remaining.py works in, and
+       what the payment form asks the user for.
+    2. The request's currency is then converted into the *order's* currency using
+       the exchange rate stored on each product.
+
+    A request may in principle mix products carrying different rates, so step 2
+    uses the request's amount-weighted average rate. That is exact, not an
+    approximation: a payment covers a request's items in proportion to their
+    amounts (the same allocation product_payment_summary.py uses). For the
+    common case — every product priced in the order's currency — every rate is
+    1 and this reduces to the plain sum of payments.
+    """
+    paid_per_request = (
+        await session.execute(
+            select(
+                PaymentRequest.id,
+                func.coalesce(func.sum(Payment.amount * Payment.exchange_rate), Decimal("0")),
+            )
+            .outerjoin(Payment, Payment.payment_request_id == PaymentRequest.id)
+            .where(PaymentRequest.order_id == order_id)
+            .group_by(PaymentRequest.id)
+        )
+    ).all()
+
+    rate_per_request = {
+        request_id: (weighted, total)
+        for request_id, weighted, total in (
+            await session.execute(
+                select(
+                    PaymentRequestItem.payment_request_id,
+                    func.sum(PaymentRequestItem.amount * Product.exchange_rate),
+                    func.sum(PaymentRequestItem.amount),
+                )
+                .join(Product, PaymentRequestItem.product_id == Product.id)
+                .join(PaymentRequest, PaymentRequestItem.payment_request_id == PaymentRequest.id)
+                .where(PaymentRequest.order_id == order_id)
+                .group_by(PaymentRequestItem.payment_request_id)
+            )
+        ).all()
+    }
+
+    purchases = Decimal("0")
+    for request_id, paid in paid_per_request:
+        weighted, total = rate_per_request.get(request_id, (None, None))
+        # An itemless request can't exist through the API; treat it as rate 1
+        # rather than dropping payments that were recorded against it.
+        rate = weighted / total if total else Decimal("1")
+        purchases += paid * rate
+    return purchases
+
+
 async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakdown:
     """Calculate profit for an order in its currency.
 
     Formula: Income − Purchases − Logistics − Other expenses = Profit
 
-    Each component converts to order currency via: amount * exchange_rate,
-    where exchange_rate is stored as "order-currency units per 1 operation-currency unit".
+    Ledger entries and logistics expenses convert to the order currency via
+    `amount * exchange_rate`, where the rate is stored as "order-currency units
+    per 1 operation-currency unit". Purchases need a second hop through the
+    payment request's currency — see _calculate_purchases.
     """
     income: Decimal = (
         await session.execute(
@@ -81,13 +142,7 @@ async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakd
         )
     ).scalar_one()
 
-    purchases: Decimal = (
-        await session.execute(
-            select(func.coalesce(func.sum(Payment.amount * Payment.exchange_rate), Decimal("0")))
-            .join(PaymentRequest, Payment.payment_request_id == PaymentRequest.id)
-            .where(PaymentRequest.order_id == order_id)
-        )
-    ).scalar_one()
+    purchases: Decimal = await _calculate_purchases(order_id, session)
 
     logistics: Decimal = (
         await session.execute(

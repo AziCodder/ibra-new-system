@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -7,12 +8,13 @@ from sqlalchemy.orm import aliased
 
 from app.core.database import get_session
 from app.models.client import Client
-from app.models.logistics import Logistics, LogisticsStatus
+from app.models.logistics import Logistics, LogisticsItem, LogisticsStatus
 from app.models.order import Order
 from app.models.product import Product
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
-from app.schemas.logistics import LogisticsSummaryOut
+from app.schemas.logistics import LogisticsItemOut, LogisticsSummaryOut
+from app.services.logistics_items import get_logistics_items
 
 router = APIRouter(prefix="/api/logistics", tags=["logistics_global"])
 
@@ -31,11 +33,10 @@ async def list_all_logistics(
     session: AsyncSession = Depends(get_session),
 ) -> list[LogisticsSummaryOut]:
     stmt = (
-        select(Logistics, Order, Client, ManagerUser, Product, CreatorUser)
+        select(Logistics, Order, Client, ManagerUser, CreatorUser)
         .join(Order, Logistics.order_id == Order.id)
         .join(Client, Order.client_id == Client.id)
         .join(ManagerUser, Order.manager_id == ManagerUser.id)
-        .join(Product, Logistics.product_id == Product.id)
         .join(CreatorUser, Logistics.created_by_id == CreatorUser.id)
     )
 
@@ -50,11 +51,19 @@ async def list_all_logistics(
         stmt = stmt.where(Order.manager_id == manager_id)
     if search:
         term = f"%{search}%"
+        # A shipment now carries several products, so the product-name match is an
+        # EXISTS over its lines rather than a join (which would duplicate rows).
+        matches_product = (
+            select(LogisticsItem.id)
+            .join(Product, LogisticsItem.product_id == Product.id)
+            .where(LogisticsItem.logistics_id == Logistics.id, Product.name.ilike(term))
+            .exists()
+        )
         stmt = stmt.where(
             or_(
                 Logistics.tracking.ilike(term),
                 Order.number.ilike(term),
-                Product.name.ilike(term),
+                matches_product,
             )
         )
 
@@ -63,15 +72,20 @@ async def list_all_logistics(
     )
 
     rows = (await session.execute(stmt)).all()
+    lines_by_logistics = await get_logistics_items(session, [lg.id for lg, *_ in rows])
     return [
         LogisticsSummaryOut(
             id=lg.id,
             order_id=lg.order_id,
-            product_id=lg.product_id,
-            product_name=product.name,
+            items=[
+                LogisticsItemOut(product_id=line.product_id, product_name=line.product_name, quantity=line.quantity)
+                for line in lines_by_logistics.get(lg.id, [])
+            ],
             created_by_id=lg.created_by_id,
             created_by_name=creator.full_name,
-            quantity=lg.quantity,
+            total_quantity=sum(
+                (line.quantity for line in lines_by_logistics.get(lg.id, [])), start=Decimal("0")
+            ),
             tracking=lg.tracking,
             ship_date=lg.ship_date,
             invoice_file_key=lg.invoice_file_key,
@@ -89,5 +103,5 @@ async def list_all_logistics(
             manager_name=manager.full_name,
             manager_id=order.manager_id,
         )
-        for lg, order, client, manager, product, creator in rows
+        for lg, order, client, manager, creator in rows
     ]

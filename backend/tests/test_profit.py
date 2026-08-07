@@ -23,6 +23,7 @@ from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.services.profit import ProfitBreakdown, calculate_profit
+from tests.helpers import add_shipment
 
 _NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -68,10 +69,14 @@ async def test_rub_order_tz_example_1():
     """ТЗ §11 Example 1: RUB order with multi-currency operations.
 
     Income:    200 000 RUB × 1  + 500 USD × 90     = 245 000 RUB
-    Purchases: 4 000 CNY × 11   + 7 000 CNY × 11   = 121 000 RUB
+    Purchases: 4 000 CNY + 7 000 CNY, × 11         = 121 000 RUB
     Logistics: 40 000 RUB × 1                       =  40 000 RUB
     Expenses:  10 000 RUB × 1                       =  10 000 RUB
     Profit:    245 000 − 121 000 − 40 000 − 10 000  =  74 000 RUB
+
+    The purchase is priced in CNY, so the CNY→RUB rate of 11 lives on the
+    product; the payments are themselves in CNY, i.e. already in the payment
+    request's currency, hence their own rate is 1.
     """
     try:
         async with async_session_factory() as session:
@@ -100,7 +105,8 @@ async def test_rub_order_tz_example_1():
 
             # Product needed for logistics and payment-request-item
             product = Product(order_id=order.id, supplier_id=sup.id, name="Goods",
-                              quantity=Decimal("100.000"), price=Decimal("11.00"), currency="CNY")
+                              quantity=Decimal("100.000"), price=Decimal("11.00"), currency="CNY",
+                              exchange_rate=Decimal("11.000000"))
             session.add(product)
             await session.commit()
             await session.refresh(product)
@@ -115,18 +121,24 @@ async def test_rub_order_tz_example_1():
                                            amount=Decimal("1210.00")))
             session.add_all([
                 Payment(payment_request_id=pr.id, author_id=mgr.id,
-                        amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("11.000000")),
+                        amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
                 Payment(payment_request_id=pr.id, author_id=mgr.id,
-                        amount=Decimal("7000.00"), currency="CNY", exchange_rate=Decimal("11.000000")),
+                        amount=Decimal("7000.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
             ])
 
             # Accepted logistics with RUB expense
-            session.add(Logistics(
-                order_id=order.id, product_id=product.id, created_by_id=adm.id,
-                quantity=Decimal("50.000"), tracking="PRFT1-TRK", ship_date=_NOW,
-                status=LogisticsStatus.accepted,
-                expense_amount=Decimal("40000.00"), currency="RUB", exchange_rate=Decimal("1.000000"),
-            ))
+            await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("50.000"))],
+                            order_id=order.id,
+                            created_by_id=adm.id,
+                            tracking="PRFT1-TRK",
+                            ship_date=_NOW,
+                            status=LogisticsStatus.accepted,
+                            expense_amount=Decimal("40000.00"),
+                            currency="RUB",
+                            exchange_rate=Decimal("1.000000"),
+                        )
 
             # One expense entry
             session.add(LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.expense,
@@ -204,12 +216,18 @@ async def test_usd_order_tz_example_2():
                                 amount=Decimal("400.00"), currency="CNY", exchange_rate=Decimal("0.200000")))
 
             # Accepted logistics: 300 RUB × 0.01 = 3 USD
-            session.add(Logistics(
-                order_id=order.id, product_id=product.id, created_by_id=adm.id,
-                quantity=Decimal("50.000"), tracking="PRFT2-TRK", ship_date=_NOW,
-                status=LogisticsStatus.accepted,
-                expense_amount=Decimal("300.00"), currency="RUB", exchange_rate=Decimal("0.010000"),
-            ))
+            await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("50.000"))],
+                            order_id=order.id,
+                            created_by_id=adm.id,
+                            tracking="PRFT2-TRK",
+                            ship_date=_NOW,
+                            status=LogisticsStatus.accepted,
+                            expense_amount=Decimal("300.00"),
+                            currency="RUB",
+                            exchange_rate=Decimal("0.010000"),
+                        )
 
             # Other expense: 50 USD × 1 = 50 USD
             session.add(LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.expense,
@@ -227,6 +245,64 @@ async def test_usd_order_tz_example_2():
         assert b.profit == Decimal("967")
     finally:
         await _cleanup("TSTPRFT2", ["prft2_mgr", "prft2_adm"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.key_profit
+async def test_purchases_convert_through_both_the_payment_and_the_product_rate():
+    """A payment in a third currency, against a product priced in a second one.
+
+    Order is USD. The product is priced in CNY (1 CNY = 0.14 USD), so the payment
+    request is a CNY request. The payment itself is made in RUB, and its own rate
+    converts RUB into that request's currency (1 RUB = 0.08 CNY).
+
+    Purchases: 5 000 RUB × 0.08 = 400 CNY, × 0.14 = 56 USD
+
+    Neither rate alone gets there — this is what regressed when a product could
+    only ever be priced in its order's currency.
+    """
+    try:
+        async with async_session_factory() as session:
+            client = Client(code="TSTPRFT4", full_name="Profit Two Hops")
+            mgr = User(login="prft4_mgr", password_hash=hash_password("x"), role=UserRole.manager, full_name="PrftMgr4")
+            sup = Supplier(name="PrftSupplier4")
+            session.add_all([client, mgr, sup])
+            await session.commit()
+            for o in (client, mgr, sup):
+                await session.refresh(o)
+
+            order = Order(number="TSTPRFT4-1", client_id=client.id, manager_id=mgr.id,
+                          status=OrderStatus.in_progress, currency="USD")
+            session.add(order)
+            await session.commit()
+            await session.refresh(order)
+
+            product = Product(order_id=order.id, supplier_id=sup.id, name="Imported",
+                              quantity=Decimal("10.000"), price=Decimal("100.00"), currency="CNY",
+                              exchange_rate=Decimal("0.140000"))
+            session.add(product)
+            await session.commit()
+            await session.refresh(product)
+
+            pr = PaymentRequest(order_id=order.id, created_by_id=mgr.id)
+            session.add(pr)
+            await session.commit()
+            await session.refresh(pr)
+
+            session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id,
+                                           amount=Decimal("1000.00")))
+            session.add(Payment(payment_request_id=pr.id, author_id=mgr.id,
+                                amount=Decimal("5000.00"), currency="RUB", exchange_rate=Decimal("0.080000")))
+            await session.commit()
+
+        async with async_session_factory() as session:
+            b = await calculate_profit(order.id, session)
+
+        assert b.currency == "USD"
+        assert b.purchases == Decimal("56.0000")
+        assert b.profit == Decimal("-56.0000")
+    finally:
+        await _cleanup("TSTPRFT4", ["prft4_mgr"])
 
 
 @pytest.mark.asyncio
@@ -285,12 +361,18 @@ async def test_in_transit_logistics_not_counted():
             await session.refresh(product)
 
             # in_transit logistics with expense set (should be ignored)
-            session.add(Logistics(
-                order_id=order.id, product_id=product.id, created_by_id=mgr.id,
-                quantity=Decimal("10.000"), tracking="PRFT3-TRK", ship_date=_NOW,
-                status=LogisticsStatus.in_transit,
-                expense_amount=Decimal("999.00"), currency="USD", exchange_rate=Decimal("1.000000"),
-            ))
+            await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("10.000"))],
+                            order_id=order.id,
+                            created_by_id=mgr.id,
+                            tracking="PRFT3-TRK",
+                            ship_date=_NOW,
+                            status=LogisticsStatus.in_transit,
+                            expense_amount=Decimal("999.00"),
+                            currency="USD",
+                            exchange_rate=Decimal("1.000000"),
+                        )
             await session.commit()
 
         async with async_session_factory() as session:
@@ -356,12 +438,18 @@ async def test_readiness_false_partial_shipment():
             await session.refresh(product)
 
             # Only 50 accepted out of 100
-            session.add(Logistics(
-                order_id=order.id, product_id=product.id, created_by_id=adm.id,
-                quantity=Decimal("50.000"), tracking="R1-TRK", ship_date=_NOW,
-                status=LogisticsStatus.accepted,
-                expense_amount=Decimal("0.00"), currency="RUB", exchange_rate=Decimal("1.000000"),
-            ))
+            await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("50.000"))],
+                            order_id=order.id,
+                            created_by_id=adm.id,
+                            tracking="R1-TRK",
+                            ship_date=_NOW,
+                            status=LogisticsStatus.accepted,
+                            expense_amount=Decimal("0.00"),
+                            currency="RUB",
+                            exchange_rate=Decimal("1.000000"),
+                        )
             await session.commit()
 
         async with async_session_factory() as session:
@@ -398,12 +486,18 @@ async def test_readiness_true_fully_shipped_and_accepted():
             await session.refresh(product)
 
             # Exactly 50 accepted
-            session.add(Logistics(
-                order_id=order.id, product_id=product.id, created_by_id=adm.id,
-                quantity=Decimal("50.000"), tracking="R2-TRK", ship_date=_NOW,
-                status=LogisticsStatus.accepted,
-                expense_amount=Decimal("0.00"), currency="RUB", exchange_rate=Decimal("1.000000"),
-            ))
+            await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("50.000"))],
+                            order_id=order.id,
+                            created_by_id=adm.id,
+                            tracking="R2-TRK",
+                            ship_date=_NOW,
+                            status=LogisticsStatus.accepted,
+                            expense_amount=Decimal("0.00"),
+                            currency="RUB",
+                            exchange_rate=Decimal("1.000000"),
+                        )
             await session.commit()
 
         async with async_session_factory() as session:
@@ -440,15 +534,27 @@ async def test_readiness_false_in_transit_blocks_even_if_qty_covered():
             await session.refresh(product)
 
             # 30 accepted (covers qty) but another 10 still in_transit
-            session.add_all([
-                Logistics(order_id=order.id, product_id=product.id, created_by_id=adm.id,
-                          quantity=Decimal("30.000"), tracking="R3-TRK-A", ship_date=_NOW,
-                          status=LogisticsStatus.accepted,
-                          expense_amount=Decimal("0.00"), currency="RUB", exchange_rate=Decimal("1.000000")),
-                Logistics(order_id=order.id, product_id=product.id, created_by_id=mgr.id,
-                          quantity=Decimal("10.000"), tracking="R3-TRK-B", ship_date=_NOW,
-                          status=LogisticsStatus.in_transit),
-            ])
+            await add_shipment(
+                session,
+                lines=[(product.id, Decimal("30.000"))],
+                order_id=order.id,
+                created_by_id=adm.id,
+                tracking="R3-TRK-A",
+                ship_date=_NOW,
+                status=LogisticsStatus.accepted,
+                expense_amount=Decimal("0.00"),
+                currency="RUB",
+                exchange_rate=Decimal("1.000000"),
+            )
+            await add_shipment(
+                session,
+                lines=[(product.id, Decimal("10.000"))],
+                order_id=order.id,
+                created_by_id=mgr.id,
+                tracking="R3-TRK-B",
+                ship_date=_NOW,
+                status=LogisticsStatus.in_transit,
+            )
             await session.commit()
 
         async with async_session_factory() as session:

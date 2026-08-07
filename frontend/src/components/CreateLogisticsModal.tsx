@@ -3,16 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchProducts } from '../api/products'
 import { fetchLogistics, createLogistics } from '../api/logistics'
 import FileUploader, { type UploadedFile } from './FileUploader'
-
-function formatNumber(value: number): string {
-  return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
-}
+import ShipmentLinesEditor, { type ShipmentLine, remainingByProduct, validateLines } from './ShipmentLinesEditor'
 
 export default function CreateLogisticsModal({ orderId, onClose }: { orderId: number; onClose: () => void }) {
   const queryClient = useQueryClient()
 
-  const [productId, setProductId] = useState<number | ''>('')
-  const [quantity, setQuantity] = useState('')
+  const [lines, setLines] = useState<ShipmentLine[]>([{ productId: '', quantity: '' }])
   const [tracking, setTracking] = useState('')
   const [shipDate, setShipDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [details, setDetails] = useState('')
@@ -29,22 +25,13 @@ export default function CreateLogisticsModal({ orderId, onClose }: { orderId: nu
   })
 
   const loading = productsLoading || logisticsLoading
-
-  const remainingByProduct = new Map<number, number>()
-  for (const product of products ?? []) {
-    const alreadyShipped = (logisticsList ?? [])
-      .filter((l) => l.product_id === product.id && l.status !== 'cancelled')
-      .reduce((sum, l) => sum + Number(l.quantity), 0)
-    remainingByProduct.set(product.id, Number(product.quantity) - alreadyShipped)
-  }
-
-  const remaining = productId !== '' ? remainingByProduct.get(productId) ?? 0 : 0
+  const remaining = remainingByProduct(products ?? [], logisticsList ?? [])
+  const linesValid = validateLines(lines, remaining)
 
   const mutation = useMutation({
     mutationFn: () =>
       createLogistics(orderId, {
-        product_id: productId as number,
-        quantity: Number(quantity),
+        items: lines.map((line) => ({ product_id: Number(line.productId), quantity: Number(line.quantity) })),
         tracking,
         ship_date: new Date(shipDate).toISOString(),
         invoice_file_key: file?.key ?? null,
@@ -60,7 +47,7 @@ export default function CreateLogisticsModal({ orderId, onClose }: { orderId: nu
     onError: (err: Error) => setError(err.message),
   })
 
-  const canSave = productId !== '' && Number(quantity) > 0 && Number(quantity) <= remaining && shipDate !== ''
+  const canSave = linesValid && shipDate !== ''
 
   return (
     <div
@@ -95,42 +82,12 @@ export default function CreateLogisticsModal({ orderId, onClose }: { orderId: nu
         )}
 
         {!loading && products && products.length > 0 && (
-          <>
-            <label className="block mb-4">
-              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Товар</span>
-              <select
-                value={productId}
-                onChange={(e) => setProductId(e.target.value ? Number(e.target.value) : '')}
-                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-              >
-                <option value="">— выберите товар —</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-
-            {productId !== '' && (
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <label className="block">
-                  <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Кол-во</span>
-                  <input
-                    type="number"
-                    min="0.000001"
-                    step="any"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                    style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-                  />
-                </label>
-                <div className="flex items-end pb-2.5 text-xs" style={{ color: 'var(--color-muted)' }}>
-                  остаток отправки: {formatNumber(remaining)}
-                </div>
-              </div>
-            )}
-          </>
+          <ShipmentLinesEditor
+            products={products}
+            remaining={remaining}
+            lines={lines}
+            onChange={setLines}
+          />
         )}
 
         <label className="block mb-4">

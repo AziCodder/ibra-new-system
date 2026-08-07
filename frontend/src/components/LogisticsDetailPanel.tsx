@@ -6,6 +6,7 @@ import {
   acceptLogistics,
   unacceptLogistics,
   notifyLogisticsReceived,
+  fetchLogistics,
   fetchLogisticsComments,
   createLogisticsComment,
   AmbiguousGroupsError,
@@ -13,7 +14,9 @@ import {
   type LogisticsStatus,
   type TelegramGroupOut,
 } from '../api/logistics'
+import { fetchProducts } from '../api/products'
 import FileUploader, { type UploadedFile } from './FileUploader'
+import ShipmentLinesEditor, { type ShipmentLine, remainingByProduct, validateLines } from './ShipmentLinesEditor'
 import Tag, { type TagColor } from './Tag'
 import TelegramGroupPicker from './TelegramGroupPicker'
 
@@ -72,7 +75,9 @@ export default function LogisticsDetailPanel({
   const [isAccepting, setIsAccepting] = useState(false)
   const [commentText, setCommentText] = useState('')
 
-  const [editQuantity, setEditQuantity] = useState(logistics.quantity)
+  const [editLines, setEditLines] = useState<ShipmentLine[]>(() =>
+    logistics.items.map((item) => ({ productId: item.product_id, quantity: item.quantity }))
+  )
   const [editTracking, setEditTracking] = useState(logistics.tracking)
   const [editShipDate, setEditShipDate] = useState(logistics.ship_date.slice(0, 10))
   const [editDetails, setEditDetails] = useState(logistics.details)
@@ -99,10 +104,29 @@ export default function LogisticsDetailPanel({
     queryClient.invalidateQueries({ queryKey: ['products', orderId] })
   }
 
+  /** Products and sibling shipments are needed to bound the per-line quantities. */
+  const { data: products, isPending: productsPending } = useQuery({
+    queryKey: ['products', orderId],
+    queryFn: () => fetchProducts(orderId),
+    enabled: isEditing,
+  })
+  const { data: siblingShipments, isPending: shipmentsPending } = useQuery({
+    queryKey: ['logistics', orderId],
+    queryFn: () => fetchLogistics(orderId),
+    enabled: isEditing,
+  })
+
+  const editDataLoading = isEditing && (productsPending || shipmentsPending)
+  const editRemaining = remainingByProduct(products ?? [], siblingShipments ?? [], logistics.id)
+  const editLinesValid = validateLines(editLines, editRemaining)
+
   const updateMutation = useMutation({
     mutationFn: () =>
       updateLogistics(orderId, logistics.id, {
-        quantity: Number(editQuantity),
+        items: editLines.map((line) => ({
+          product_id: Number(line.productId),
+          quantity: Number(line.quantity),
+        })),
         tracking: editTracking,
         ship_date: new Date(editShipDate).toISOString(),
         invoice_file_key: editFile?.key ?? null,
@@ -200,7 +224,9 @@ export default function LogisticsDetailPanel({
 
   async function handleCopy() {
     const lines = [
-      `Товар: ${logistics.product_name}`,
+      ...logistics.items.map(
+        (item) => `Товар: ${item.product_name} · ${formatNumber(Number(item.quantity))}`
+      ),
       `Дата отправки: ${formatDate(logistics.ship_date)}`,
       `Трекинг: ${logistics.tracking || '—'}`,
       `Примечание: ${logistics.details || '—'}`,
@@ -251,7 +277,13 @@ export default function LogisticsDetailPanel({
               <Tag color={STATUS_COLOR[logistics.status]}>{STATUS_LABELS[logistics.status]}</Tag>
               <span className="text-xs" style={{ color: 'var(--color-muted)' }}>№{orderNumber}</span>
             </div>
-            <SummaryRow label="Товар" value={`${logistics.product_name} · ${formatNumber(Number(logistics.quantity))}`} />
+            {logistics.items.map((item) => (
+              <SummaryRow
+                key={item.product_id}
+                label={item.product_name}
+                value={formatNumber(Number(item.quantity))}
+              />
+            ))}
             <SummaryRow label="Трекинг" value={logistics.tracking || '—'} />
             <SummaryRow label="Дата отправки" value={formatDate(logistics.ship_date)} />
             {logistics.details && (
@@ -276,18 +308,18 @@ export default function LogisticsDetailPanel({
             <div className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--color-muted)' }}>
               Редактирование
             </div>
-            <label className="block mb-3">
-              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Кол-во</span>
-              <input
-                type="number"
-                min="0.000001"
-                step="any"
-                value={editQuantity}
-                onChange={(e) => setEditQuantity(e.target.value)}
-                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+            {/* Rendering the line editor before the products land would blank out
+                every product select, so hold off until the lookup data is in. */}
+            {editDataLoading ? (
+              <div className="text-sm mb-4" style={{ color: 'var(--color-muted)' }}>Загрузка позиций...</div>
+            ) : (
+              <ShipmentLinesEditor
+                products={products ?? []}
+                remaining={editRemaining}
+                lines={editLines}
+                onChange={setEditLines}
               />
-            </label>
+            )}
             <label className="block mb-3">
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Трекинг</span>
               <input
@@ -348,7 +380,7 @@ export default function LogisticsDetailPanel({
               </button>
               <button
                 onClick={() => updateMutation.mutate()}
-                disabled={updateMutation.isPending}
+                disabled={!editLinesValid || updateMutation.isPending}
                 className="flex-1 rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50"
                 style={{ background: 'var(--color-primary)', color: '#fff' }}
               >

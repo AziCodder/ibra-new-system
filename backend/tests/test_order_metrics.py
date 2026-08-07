@@ -16,6 +16,7 @@ from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.services.order_metrics import snapshot_order_metrics
+from tests.helpers import add_shipment
 
 
 async def _cleanup(client_code: str, logins: list[str]) -> None:
@@ -106,13 +107,18 @@ async def test_snapshot_ready_writes_metrics():
             await session.refresh(product)
 
             # Fully accepted shipment covering qty exactly
-            session.add(Logistics(
-                order_id=order.id, product_id=product.id, created_by_id=adm.id,
-                quantity=Decimal("20.000"), tracking="MTX1-TRK",
-                ship_date=order.created_at,
-                status=LogisticsStatus.accepted,
-                expense_amount=None, currency="RUB", exchange_rate=Decimal("1.000000"),
-            ))
+            await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("20.000"))],
+                            order_id=order.id,
+                            created_by_id=adm.id,
+                            tracking="MTX1-TRK",
+                            ship_date=order.created_at,
+                            status=LogisticsStatus.accepted,
+                            expense_amount=None,
+                            currency="RUB",
+                            exchange_rate=Decimal("1.000000"),
+                        )
             # Income: 1000 RUB (no purchases/expenses/logistics cost → profit = 1000)
             session.add(LedgerEntry(
                 order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
@@ -169,13 +175,18 @@ async def test_snapshot_zero_income_gives_zero_pct():
             await session.refresh(product)
 
             # All 10 accepted — ready, but no income entries
-            session.add(Logistics(
-                order_id=order.id, product_id=product.id, created_by_id=adm.id,
-                quantity=Decimal("10.000"), tracking="MTX2-TRK",
-                ship_date=order.created_at,
-                status=LogisticsStatus.accepted,
-                expense_amount=None, currency="RUB", exchange_rate=Decimal("1.000000"),
-            ))
+            await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("10.000"))],
+                            order_id=order.id,
+                            created_by_id=adm.id,
+                            tracking="MTX2-TRK",
+                            ship_date=order.created_at,
+                            status=LogisticsStatus.accepted,
+                            expense_amount=None,
+                            currency="RUB",
+                            exchange_rate=Decimal("1.000000"),
+                        )
             await session.commit()
 
         async with async_session_factory() as session:

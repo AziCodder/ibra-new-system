@@ -13,6 +13,7 @@ from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.services.order_dependencies import count_order_dependencies
 from app.services.product_dependencies import count_product_dependencies
+from tests.helpers import add_shipment
 
 
 async def _setup():
@@ -68,15 +69,14 @@ async def test_logistics_persists_with_defaults():
     client, supplier, admin, order, product = await _setup()
     try:
         async with async_session_factory() as session:
-            logistics = Logistics(
-                order_id=order.id,
-                product_id=product.id,
-                created_by_id=admin.id,
-                quantity=Decimal("10"),
-                tracking="M77-170566",
-                ship_date=datetime.now(UTC),
-            )
-            session.add(logistics)
+            logistics = await add_shipment(
+                            session,
+                            lines=[(product.id, Decimal("10"))],
+                            order_id=order.id,
+                            created_by_id=admin.id,
+                            tracking="M77-170566",
+                            ship_date=datetime.now(UTC),
+                        )
             await session.commit()
             await session.refresh(logistics)
 
@@ -95,15 +95,13 @@ async def test_count_order_dependencies_counts_logistics():
             count = await count_order_dependencies(session, order.id)
             assert count == 0  # a bare product doesn't block deletion (ТЗ §6)
 
-            session.add(
-                Logistics(
+            await add_shipment(
+                    session,
+                    lines=[(product.id, Decimal("10"))],
                     order_id=order.id,
-                    product_id=product.id,
                     created_by_id=admin.id,
-                    quantity=Decimal("10"),
                     ship_date=datetime.now(UTC),
                 )
-            )
             await session.commit()
 
         async with async_session_factory() as session:
@@ -121,15 +119,13 @@ async def test_count_product_dependencies_counts_logistics():
             count = await count_product_dependencies(session, product.id)
             assert count == 0
 
-            session.add(
-                Logistics(
+            await add_shipment(
+                    session,
+                    lines=[(product.id, Decimal("10"))],
                     order_id=order.id,
-                    product_id=product.id,
                     created_by_id=admin.id,
-                    quantity=Decimal("10"),
                     ship_date=datetime.now(UTC),
                 )
-            )
             await session.commit()
 
         async with async_session_factory() as session:
