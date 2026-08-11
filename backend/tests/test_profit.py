@@ -1,8 +1,9 @@
 """Profit calculation service — ТЗ §11 examples.
 
 Formula: Income − Purchases − Logistics − Other expenses = Profit
-All amounts converted to order currency via: value = amount * exchange_rate
-(exchange_rate is stored as "order-currency units per 1 operation-currency unit").
+All amounts converted to order currency via: value = amount / exchange_rate
+(exchange_rate is stored as "operation-currency units per 1 order-currency unit",
+i.e. exactly what the forms ask for: "1 CNY = 11.5 RUB" -> 11.5).
 """
 
 from datetime import datetime, timezone
@@ -68,15 +69,20 @@ async def _cleanup(client_code: str, user_logins: list[str]) -> None:
 async def test_rub_order_tz_example_1():
     """ТЗ §11 Example 1: RUB order with multi-currency operations.
 
-    Income:    200 000 RUB × 1  + 500 USD × 90     = 245 000 RUB
-    Purchases: 4 000 CNY + 7 000 CNY, × 11         = 121 000 RUB
-    Logistics: 40 000 RUB × 1                       =  40 000 RUB
-    Expenses:  10 000 RUB × 1                       =  10 000 RUB
+    Income:    200 000 RUB / 1  +   450 USD / 0.01  = 245 000 RUB
+    Purchases: 4 000 CNY + 8 100 CNY, / 0.1         = 121 000 RUB
+    Logistics: 40 000 RUB / 1                       =  40 000 RUB
+    Expenses:  10 000 RUB / 1                       =  10 000 RUB
     Profit:    245 000 − 121 000 − 40 000 − 10 000  =  74 000 RUB
 
-    The purchase is priced in CNY, so the CNY→RUB rate of 11 lives on the
-    product; the payments are themselves in CNY, i.e. already in the payment
-    request's currency, hence their own rate is 1.
+    Rates read "operation currency per 1 RUB", so 1 RUB = 0.01 USD (100 RUB per
+    dollar) and 1 RUB = 0.1 CNY (10 RUB per yuan). The ТЗ's own quotes (90 RUB/USD,
+    11 RUB/CNY) have no exact 6-decimal inverse, so the foreign amounts are picked
+    to land on the same totals the ТЗ example asserts.
+
+    The purchase is priced in CNY, so the RUB→CNY rate lives on the product; the
+    payments are themselves in CNY, i.e. already in the payment request's currency,
+    hence their own rate is 1.
     """
     try:
         async with async_session_factory() as session:
@@ -100,13 +106,13 @@ async def test_rub_order_tz_example_1():
                 LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
                             amount=Decimal("200000.00"), currency="RUB", exchange_rate=Decimal("1.000000")),
                 LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
-                            amount=Decimal("500.00"), currency="USD", exchange_rate=Decimal("90.000000")),
+                            amount=Decimal("450.00"), currency="USD", exchange_rate=Decimal("0.010000")),
             ])
 
             # Product needed for logistics and payment-request-item
             product = Product(order_id=order.id, supplier_id=sup.id, name="Goods",
-                              quantity=Decimal("100.000"), price=Decimal("11.00"), currency="CNY",
-                              exchange_rate=Decimal("11.000000"))
+                              quantity=Decimal("100.000"), price=Decimal("121.00"), currency="CNY",
+                              exchange_rate=Decimal("0.100000"))
             session.add(product)
             await session.commit()
             await session.refresh(product)
@@ -118,12 +124,12 @@ async def test_rub_order_tz_example_1():
             await session.refresh(pr)
 
             session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id,
-                                           amount=Decimal("1210.00")))
+                                           amount=Decimal("12100.00")))
             session.add_all([
                 Payment(payment_request_id=pr.id, author_id=mgr.id,
                         amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
                 Payment(payment_request_id=pr.id, author_id=mgr.id,
-                        amount=Decimal("7000.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
+                        amount=Decimal("8100.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
             ])
 
             # Accepted logistics with RUB expense
@@ -162,15 +168,15 @@ async def test_rub_order_tz_example_1():
 async def test_usd_order_tz_example_2():
     """ТЗ §11 Example 2: USD order with multi-currency operations (logic identical to ТЗ §11 example 2).
 
-    Income:    1 000 USD × 1   + 500 CNY × 0.2     = 1 100 USD
-    Purchases: 400 CNY × 0.2                        =    80 USD
-    Logistics: 300 RUB × 0.01                       =     3 USD
-    Expenses:  50 USD × 1                           =    50 USD
+    Income:    1 000 USD / 1   + 500 CNY / 5       = 1 100 USD
+    Purchases: 400 CNY / 5                          =    80 USD
+    Logistics: 300 RUB / 100                        =     3 USD
+    Expenses:  50 USD / 1                           =    50 USD
     Profit:    1 100 − 80 − 3 − 50                  =   967 USD
 
-    Rates express "USD per 1 unit of operation currency":
-    0.2 USD/CNY  → 1 USD = 5 CNY
-    0.01 USD/RUB → 1 USD = 100 RUB
+    Rates express "operation currency per 1 USD":
+    1 USD = 5 CNY
+    1 USD = 100 RUB
     (Uses exact 6-decimal Numeric representations for DB precision.)
     """
     try:
@@ -190,12 +196,12 @@ async def test_usd_order_tz_example_2():
             await session.commit()
             await session.refresh(order)
 
-            # Income: 1000 USD × 1 + 500 CNY × 0.2 = 1100 USD
+            # Income: 1000 USD / 1 + 500 CNY / 5 = 1100 USD
             session.add_all([
                 LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
                             amount=Decimal("1000.00"), currency="USD", exchange_rate=Decimal("1.000000")),
                 LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
-                            amount=Decimal("500.00"), currency="CNY", exchange_rate=Decimal("0.200000")),
+                            amount=Decimal("500.00"), currency="CNY", exchange_rate=Decimal("5.000000")),
             ])
 
             product = Product(order_id=order.id, supplier_id=sup.id, name="Goods USD",
@@ -204,7 +210,7 @@ async def test_usd_order_tz_example_2():
             await session.commit()
             await session.refresh(product)
 
-            # Purchase: 400 CNY × 0.2 = 80 USD
+            # Purchase: 400 CNY / 5 = 80 USD
             pr = PaymentRequest(order_id=order.id, created_by_id=mgr.id)
             session.add(pr)
             await session.commit()
@@ -213,9 +219,9 @@ async def test_usd_order_tz_example_2():
             session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id,
                                            amount=Decimal("80.00")))
             session.add(Payment(payment_request_id=pr.id, author_id=mgr.id,
-                                amount=Decimal("400.00"), currency="CNY", exchange_rate=Decimal("0.200000")))
+                                amount=Decimal("400.00"), currency="CNY", exchange_rate=Decimal("5.000000")))
 
-            # Accepted logistics: 300 RUB × 0.01 = 3 USD
+            # Accepted logistics: 300 RUB / 100 = 3 USD
             await add_shipment(
                             session,
                             lines=[(product.id, Decimal("50.000"))],
@@ -226,10 +232,10 @@ async def test_usd_order_tz_example_2():
                             status=LogisticsStatus.accepted,
                             expense_amount=Decimal("300.00"),
                             currency="RUB",
-                            exchange_rate=Decimal("0.010000"),
+                            exchange_rate=Decimal("100.000000"),
                         )
 
-            # Other expense: 50 USD × 1 = 50 USD
+            # Other expense: 50 USD / 1 = 50 USD
             session.add(LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.expense,
                                     amount=Decimal("50.00"), currency="USD", exchange_rate=Decimal("1.000000")))
             await session.commit()
@@ -252,11 +258,11 @@ async def test_usd_order_tz_example_2():
 async def test_purchases_convert_through_both_the_payment_and_the_product_rate():
     """A payment in a third currency, against a product priced in a second one.
 
-    Order is USD. The product is priced in CNY (1 CNY = 0.14 USD), so the payment
+    Order is USD. The product is priced in CNY (1 USD = 8 CNY), so the payment
     request is a CNY request. The payment itself is made in RUB, and its own rate
-    converts RUB into that request's currency (1 RUB = 0.08 CNY).
+    converts RUB into that request's currency (1 CNY = 12.5 RUB).
 
-    Purchases: 5 000 RUB × 0.08 = 400 CNY, × 0.14 = 56 USD
+    Purchases: 5 000 RUB / 12.5 = 400 CNY, / 8 = 50 USD
 
     Neither rate alone gets there — this is what regressed when a product could
     only ever be priced in its order's currency.
@@ -279,7 +285,7 @@ async def test_purchases_convert_through_both_the_payment_and_the_product_rate()
 
             product = Product(order_id=order.id, supplier_id=sup.id, name="Imported",
                               quantity=Decimal("10.000"), price=Decimal("100.00"), currency="CNY",
-                              exchange_rate=Decimal("0.140000"))
+                              exchange_rate=Decimal("8.000000"))
             session.add(product)
             await session.commit()
             await session.refresh(product)
@@ -292,15 +298,15 @@ async def test_purchases_convert_through_both_the_payment_and_the_product_rate()
             session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id,
                                            amount=Decimal("1000.00")))
             session.add(Payment(payment_request_id=pr.id, author_id=mgr.id,
-                                amount=Decimal("5000.00"), currency="RUB", exchange_rate=Decimal("0.080000")))
+                                amount=Decimal("5000.00"), currency="RUB", exchange_rate=Decimal("12.500000")))
             await session.commit()
 
         async with async_session_factory() as session:
             b = await calculate_profit(order.id, session)
 
         assert b.currency == "USD"
-        assert b.purchases == Decimal("56.0000")
-        assert b.profit == Decimal("-56.0000")
+        assert b.purchases == Decimal("50.0000")
+        assert b.profit == Decimal("-50.0000")
     finally:
         await _cleanup("TSTPRFT4", ["prft4_mgr"])
 

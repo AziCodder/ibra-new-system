@@ -64,6 +64,10 @@ def _to_product_out(
 def _resolve_exchange_rate(currency: str, order_currency: str, rate: Decimal | None) -> Decimal:
     """Normalise a product's rate to the order's currency, or raise 422.
 
+    The rate reads "units of the product's currency per 1 unit of the order's"
+    ("1 CNY = 11.5 RUB" -> 11.5), so converting a product total into the order's
+    currency divides by it.
+
     A product priced in the order's own currency is always rate 1 — accepting
     anything else there would silently distort the profit calculation. A product
     priced in another currency has no sensible default, so the rate is required.

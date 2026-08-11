@@ -90,7 +90,9 @@ export default function PaymentDetailModal({
   }
 
   const canSave = Number(amount) > 0 && Number(exchangeRate) > 0 && paidAt !== ''
-  const converted = Number(amount) * Number(exchangeRate)
+  // The rate is quoted from the request's currency outwards ("1 CNY = ? RUB"),
+  // so converting a payment back into it divides.
+  const converted = Number(amount) / (Number(exchangeRate) || 1)
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
@@ -117,7 +119,12 @@ export default function PaymentDetailModal({
             <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
               <Row label="Автор" value={payment.author_name} />
               <Row label="Сумма" value={`${formatNumber(Number(payment.amount))} ${payment.currency}`} />
-              <Row label="Курс" value={payment.exchange_rate} />
+              <Row
+                label="Курс"
+                value={payment.currency === request.currency
+                  ? String(payment.exchange_rate)
+                  : `1 ${request.currency} = ${payment.exchange_rate} ${payment.currency}`}
+              />
               {payment.currency !== request.currency && (
                 <Row label="В валюте запроса" value={`${formatNumber(converted)} ${request.currency}`} />
               )}
@@ -190,7 +197,7 @@ export default function PaymentDetailModal({
                 type="number"
                 min="0.000001"
                 step="any"
-                placeholder={currency !== request.currency ? `1 ${currency} = ? ${request.currency}` : undefined}
+                placeholder={currency !== request.currency ? `1 ${request.currency} = ? ${currency}` : undefined}
                 value={exchangeRate}
                 onChange={(e) => setExchangeRate(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"

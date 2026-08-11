@@ -400,7 +400,18 @@ export default function LogisticsDetailPanel({
               label="Расход"
               value={logistics.expense_amount ? `${formatNumber(Number(logistics.expense_amount))} ${logistics.currency}` : '—'}
             />
-            <SummaryRow label="Курс" value={logistics.exchange_rate ?? '—'} />
+            <SummaryRow
+              label="Курс"
+              value={logistics.exchange_rate === null || logistics.currency === orderCurrency
+                ? (logistics.exchange_rate ?? '—')
+                : `1 ${orderCurrency} = ${logistics.exchange_rate} ${logistics.currency}`}
+            />
+            {logistics.expense_amount && logistics.exchange_rate && logistics.currency !== orderCurrency && (
+              <SummaryRow
+                label={`Расход в ${orderCurrency}`}
+                value={`${formatNumber(Number(logistics.expense_amount) / Number(logistics.exchange_rate))} ${orderCurrency}`}
+              />
+            )}
             {logistics.acceptance_note && (
               <p className="text-sm mt-1" style={{ color: 'var(--color-text)' }}>{logistics.acceptance_note}</p>
             )}
@@ -528,7 +539,12 @@ export default function LogisticsDetailPanel({
                 <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Валюта</span>
                 <select
                   value={acceptCurrency}
-                  onChange={(e) => setAcceptCurrency(e.target.value)}
+                  onChange={(e) => {
+                    setAcceptCurrency(e.target.value)
+                    // In the order's own currency the rate is 1; anywhere else the
+                    // old value would silently apply to a different pair.
+                    setExchangeRate(e.target.value === orderCurrency ? '1' : '')
+                  }}
                   className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
                   style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
                 >
@@ -537,7 +553,9 @@ export default function LogisticsDetailPanel({
               </label>
             </div>
             <label className="block mb-3">
-              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Курс (вручную)</span>
+              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
+                {acceptCurrency === orderCurrency ? 'Курс (вручную)' : `Курс: 1 ${orderCurrency} = ? ${acceptCurrency}`}
+              </span>
               <input
                 type="number"
                 min="0.000001"
@@ -547,6 +565,13 @@ export default function LogisticsDetailPanel({
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
                 style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               />
+              {acceptCurrency !== orderCurrency && (
+                <span className="block text-xs mt-1.5" style={{ color: 'var(--color-muted)' }}>
+                  {Number(expenseAmount) > 0 && Number(exchangeRate) > 0
+                    ? `${formatNumber(Number(expenseAmount))} ${acceptCurrency} ≈ ${formatNumber(Number(expenseAmount) / Number(exchangeRate))} ${orderCurrency}`
+                    : `Валюта расхода отличается от валюты заказа (${orderCurrency}) — курс обязателен.`}
+                </span>
+              )}
             </label>
             <label className="block mb-4">
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Примечание</span>

@@ -346,12 +346,12 @@ async def test_update_product_to_foreign_currency_requires_an_exchange_rate():
             updated = await update_product(
                 order.id,
                 created.id,
-                ProductUpdate(currency="CNY", exchange_rate=Decimal("0.14")),
+                ProductUpdate(currency="CNY", exchange_rate=Decimal("7.2")),
                 owner,
                 session,
             )
             assert updated.currency == "CNY"
-            assert updated.exchange_rate == Decimal("0.140000")
+            assert updated.exchange_rate == Decimal("7.200000")
 
         async with async_session_factory() as session:
             # Switching back to the order's currency drops the now-meaningless rate.
@@ -374,13 +374,13 @@ async def test_create_product_in_a_currency_other_than_the_orders():
                     quantity=Decimal("10"),
                     price=Decimal("850"),
                     currency="CNY",
-                    exchange_rate=Decimal("0.1385"),
+                    exchange_rate=Decimal("7.2185"),
                 ),
                 owner,
                 session,
             )
             assert created.currency == "CNY"
-            assert created.exchange_rate == Decimal("0.138500")
+            assert created.exchange_rate == Decimal("7.218500")
 
         async with async_session_factory() as session:
             with pytest.raises(HTTPException) as exc_info:

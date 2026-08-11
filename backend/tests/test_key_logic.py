@@ -86,7 +86,13 @@ async def test_manager_sees_only_own_orders_in_list():
 @pytest.mark.asyncio
 @pytest.mark.key_profit
 async def test_profit_calculation_tz_example():
-    """ТЗ §11 example 1: income − purchases − logistics − expenses = profit (74k RUB)."""
+    """ТЗ §11 example 1: income − purchases − logistics − expenses = profit (74k RUB).
+
+    Rates are stored as "operation currency per 1 order-currency unit" and convert
+    by division, so 1 RUB = 0.01 USD (100 RUB per dollar) and 1 RUB = 0.1 CNY
+    (10 RUB per yuan). The ТЗ's own quotes have no exact 6-decimal inverse, so the
+    foreign amounts are picked to land on the totals the ТЗ example asserts.
+    """
     async with async_session_factory() as session:
         client = Client(code="KEYPRF", full_name="Key Profit Client")
         mgr = User(login="key_prf_mgr", password_hash=hash_password("x"), role=UserRole.manager, full_name="Mgr")
@@ -106,10 +112,11 @@ async def test_profit_calculation_tz_example():
             LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
                         amount=Decimal("200000.00"), currency="RUB", exchange_rate=Decimal("1.000000")),
             LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
-                        amount=Decimal("500.00"), currency="USD", exchange_rate=Decimal("90.000000")),
+                        amount=Decimal("450.00"), currency="USD", exchange_rate=Decimal("0.010000")),
         ])
         product = Product(order_id=order.id, supplier_id=sup.id, name="Goods",
-                          quantity=Decimal("100.000"), price=Decimal("11.00"), currency="CNY")
+                          quantity=Decimal("100.000"), price=Decimal("121.00"), currency="CNY",
+                          exchange_rate=Decimal("0.100000"))
         session.add(product)
         await session.commit()
         await session.refresh(product)
@@ -119,12 +126,12 @@ async def test_profit_calculation_tz_example():
         await session.commit()
         await session.refresh(pr)
 
-        session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id, amount=Decimal("1210.00")))
+        session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id, amount=Decimal("12100.00")))
         session.add_all([
             Payment(payment_request_id=pr.id, author_id=mgr.id,
-                    amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("11.000000")),
+                    amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
             Payment(payment_request_id=pr.id, author_id=mgr.id,
-                    amount=Decimal("7000.00"), currency="CNY", exchange_rate=Decimal("11.000000")),
+                    amount=Decimal("8100.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
         ])
         await add_shipment(
                         session,

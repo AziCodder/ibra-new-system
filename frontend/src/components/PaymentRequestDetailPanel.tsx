@@ -248,7 +248,7 @@ export default function PaymentRequestDetailPanel({
                 type="number"
                 min="0.000001"
                 step="any"
-                placeholder={currency !== request.currency ? `1 ${currency} = ? ${request.currency}` : undefined}
+                placeholder={currency !== request.currency ? `1 ${request.currency} = ? ${currency}` : undefined}
                 value={exchangeRate}
                 onChange={(e) => setExchangeRate(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
@@ -334,7 +334,10 @@ export default function PaymentRequestDetailPanel({
                     </span>
                   </div>
                   <div style={{ color: 'var(--color-muted)' }}>
-                    {new Date(p.paid_at).toLocaleDateString('ru-RU')} · курс {p.exchange_rate}
+                    {new Date(p.paid_at).toLocaleDateString('ru-RU')}
+                    {p.currency === request.currency
+                      ? ` · курс ${p.exchange_rate}`
+                      : ` · курс 1 ${request.currency} = ${p.exchange_rate} ${p.currency}`}
                     {p.note ? ` · ${p.note}` : ''}
                   </div>
                 </li>

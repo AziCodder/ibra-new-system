@@ -68,6 +68,10 @@ async def _check_readiness(order_id: int, session: AsyncSession) -> bool:
 async def _calculate_purchases(order_id: int, session: AsyncSession) -> Decimal:
     """Total actually paid for the order's products, in the order's currency.
 
+    Every rate in the system reads "how many units of the operation's currency
+    make up 1 unit of the target currency" (`1 CNY = 11.5 RUB` -> 11.5), so a
+    conversion is always `amount / exchange_rate`.
+
     Two conversions stack, because two different currencies can be in play:
 
     1. `Payment.exchange_rate` converts a payment into the *payment request's*
@@ -78,17 +82,18 @@ async def _calculate_purchases(order_id: int, session: AsyncSession) -> Decimal:
        the exchange rate stored on each product.
 
     A request may in principle mix products carrying different rates, so step 2
-    uses the request's amount-weighted average rate. That is exact, not an
-    approximation: a payment covers a request's items in proportion to their
-    amounts (the same allocation product_payment_summary.py uses). For the
-    common case — every product priced in the order's currency — every rate is
-    1 and this reduces to the plain sum of payments.
+    uses the request's amount-weighted average of the *inverse* rates — averaging
+    1/rate rather than rate is what keeps a division-based conversion additive.
+    That is exact, not an approximation: a payment covers a request's items in
+    proportion to their amounts (the same allocation product_payment_summary.py
+    uses). For the common case — every product priced in the order's currency —
+    every rate is 1 and this reduces to the plain sum of payments.
     """
     paid_per_request = (
         await session.execute(
             select(
                 PaymentRequest.id,
-                func.coalesce(func.sum(Payment.amount * Payment.exchange_rate), Decimal("0")),
+                func.coalesce(func.sum(Payment.amount / Payment.exchange_rate), Decimal("0")),
             )
             .outerjoin(Payment, Payment.payment_request_id == PaymentRequest.id)
             .where(PaymentRequest.order_id == order_id)
@@ -102,7 +107,7 @@ async def _calculate_purchases(order_id: int, session: AsyncSession) -> Decimal:
             await session.execute(
                 select(
                     PaymentRequestItem.payment_request_id,
-                    func.sum(PaymentRequestItem.amount * Product.exchange_rate),
+                    func.sum(PaymentRequestItem.amount / Product.exchange_rate),
                     func.sum(PaymentRequestItem.amount),
                 )
                 .join(Product, PaymentRequestItem.product_id == Product.id)
@@ -116,10 +121,12 @@ async def _calculate_purchases(order_id: int, session: AsyncSession) -> Decimal:
     purchases = Decimal("0")
     for request_id, paid in paid_per_request:
         weighted, total = rate_per_request.get(request_id, (None, None))
-        # An itemless request can't exist through the API; treat it as rate 1
-        # rather than dropping payments that were recorded against it.
-        rate = weighted / total if total else Decimal("1")
-        purchases += paid * rate
+        # `weighted` already sums amount/rate, so the ratio below is the average
+        # *inverse* rate — multiply by it instead of dividing. An itemless request
+        # can't exist through the API; treat it as rate 1 rather than dropping
+        # payments that were recorded against it.
+        inverse_rate = weighted / total if total else Decimal("1")
+        purchases += paid * inverse_rate
     return purchases
 
 
@@ -129,13 +136,14 @@ async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakd
     Formula: Income − Purchases − Logistics − Other expenses = Profit
 
     Ledger entries and logistics expenses convert to the order currency via
-    `amount * exchange_rate`, where the rate is stored as "order-currency units
-    per 1 operation-currency unit". Purchases need a second hop through the
-    payment request's currency — see _calculate_purchases.
+    `amount / exchange_rate`, where the rate is stored as "operation-currency
+    units per 1 order-currency unit" — the direction the forms ask for
+    (`1 CNY = 11.5 RUB`). Purchases need a second hop through the payment
+    request's currency — see _calculate_purchases.
     """
     income: Decimal = (
         await session.execute(
-            select(func.coalesce(func.sum(LedgerEntry.amount * LedgerEntry.exchange_rate), Decimal("0"))).where(
+            select(func.coalesce(func.sum(LedgerEntry.amount / LedgerEntry.exchange_rate), Decimal("0"))).where(
                 LedgerEntry.order_id == order_id,
                 LedgerEntry.type == LedgerEntryType.income,
             )
@@ -147,7 +155,7 @@ async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakd
     logistics: Decimal = (
         await session.execute(
             select(
-                func.coalesce(func.sum(Logistics.expense_amount * Logistics.exchange_rate), Decimal("0"))
+                func.coalesce(func.sum(Logistics.expense_amount / Logistics.exchange_rate), Decimal("0"))
             ).where(
                 Logistics.order_id == order_id,
                 Logistics.status == LogisticsStatus.accepted,
@@ -158,7 +166,7 @@ async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakd
 
     other_expenses: Decimal = (
         await session.execute(
-            select(func.coalesce(func.sum(LedgerEntry.amount * LedgerEntry.exchange_rate), Decimal("0"))).where(
+            select(func.coalesce(func.sum(LedgerEntry.amount / LedgerEntry.exchange_rate), Decimal("0"))).where(
                 LedgerEntry.order_id == order_id,
                 LedgerEntry.type == LedgerEntryType.expense,
             )

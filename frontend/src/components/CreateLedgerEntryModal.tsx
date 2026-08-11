@@ -4,6 +4,10 @@ import { createLedgerEntry, type LedgerEntryType } from '../api/ledgerEntries'
 
 const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
 
+function formatNumber(value: number): string {
+  return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
+}
+
 export default function CreateLedgerEntryModal({
   orderId,
   type,
@@ -82,7 +86,12 @@ export default function CreateLedgerEntryModal({
             <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Валюта</span>
             <select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
+              onChange={(e) => {
+                setCurrency(e.target.value)
+                // In the order's own currency the rate is 1; anywhere else the
+                // old value would silently apply to a different pair.
+                setExchangeRate(e.target.value === orderCurrency ? '1' : '')
+              }}
               className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
               style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
             >
@@ -92,7 +101,9 @@ export default function CreateLedgerEntryModal({
         </div>
 
         <label className="block mb-4">
-          <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Курс (вручную)</span>
+          <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
+            {currency === orderCurrency ? 'Курс (вручную)' : `Курс: 1 ${orderCurrency} = ? ${currency}`}
+          </span>
           <input
             type="number"
             min="0.000001"
@@ -102,6 +113,13 @@ export default function CreateLedgerEntryModal({
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
+          {currency !== orderCurrency && (
+            <span className="block text-xs mt-1.5" style={{ color: 'var(--color-muted)' }}>
+              {Number(amount) > 0 && Number(exchangeRate) > 0
+                ? `${formatNumber(Number(amount))} ${currency} ≈ ${formatNumber(Number(amount) / Number(exchangeRate))} ${orderCurrency}`
+                : `Валюта отличается от валюты заказа (${orderCurrency}) — курс обязателен.`}
+            </span>
+          )}
         </label>
 
         <label className="block mb-6">

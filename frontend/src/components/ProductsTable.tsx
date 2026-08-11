@@ -22,8 +22,9 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
   const selectedProduct = products?.find((p) => p.id === selectedProductId) ?? null
 
   const totalsByCurrency = new Map<string, { quantity: number; sum: number }>()
-  // Products may be priced in different currencies; each carries its rate to the
-  // order's, so a single comparable grand total is still available.
+  // Products may be priced in different currencies; each carries its rate from the
+  // order's ("1 CNY = 11.5 RUB" -> 11.5, so divide), which keeps a single
+  // comparable grand total available.
   let grandTotalInOrderCurrency = 0
   for (const product of products ?? []) {
     const quantity = Number(product.quantity)
@@ -33,7 +34,7 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
       quantity: existing.quantity + quantity,
       sum: existing.sum + sum,
     })
-    grandTotalInOrderCurrency += sum * Number(product.exchange_rate ?? 1)
+    grandTotalInOrderCurrency += sum / Number(product.exchange_rate || 1)
   }
   const hasForeignCurrency = [...totalsByCurrency.keys()].some((c) => c !== orderCurrency)
 

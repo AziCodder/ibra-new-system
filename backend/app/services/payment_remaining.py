@@ -20,18 +20,20 @@ async def get_payment_request_total(session: AsyncSession, payment_request_id: i
 async def get_payment_request_paid(session: AsyncSession, payment_request_id: int) -> Decimal:
     """Sum of payments converted via each payment's manual exchange rate.
 
-    exchange_rate is "rate to the *payment request's* currency" — the currency the
-    request's products are priced in, which is what the payment form asks for. That
-    is not necessarily the order's currency: a product may be priced in another one.
-    profit.py performs the second hop (request currency -> order currency) using the
-    rate stored on each product; see _calculate_purchases there.
+    exchange_rate is "how many payment-currency units make up 1 unit of the
+    *payment request's* currency" — the currency the request's products are priced
+    in, which is the direction the payment form asks for (`1 CNY = 11.5 RUB`), so
+    the conversion divides. That currency is not necessarily the order's: a product
+    may be priced in another one. profit.py performs the second hop (request
+    currency -> order currency) using the rate stored on each product; see
+    _calculate_purchases there.
     """
     rows = (
         await session.execute(
             select(Payment.amount, Payment.exchange_rate).where(Payment.payment_request_id == payment_request_id)
         )
     ).all()
-    return sum((amount * rate for amount, rate in rows), start=Decimal("0"))
+    return sum((amount / rate for amount, rate in rows), start=Decimal("0"))
 
 
 async def get_payment_request_paid_excluding(
@@ -45,7 +47,7 @@ async def get_payment_request_paid_excluding(
             )
         )
     ).all()
-    return sum((amount * rate for amount, rate in rows), start=Decimal("0"))
+    return sum((amount / rate for amount, rate in rows), start=Decimal("0"))
 
 
 async def get_payment_request_remaining(session: AsyncSession, payment_request_id: int) -> Decimal:

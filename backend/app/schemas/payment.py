@@ -9,6 +9,8 @@ from app.core.currency import Currency
 class PaymentCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
     currency: Currency
+    # Units of `currency` per 1 unit of the payment request's currency
+    # ("1 CNY = 11.5 RUB" -> 11.5), so converting divides. 1 when they match.
     exchange_rate: Decimal = Field(gt=0, max_digits=14, decimal_places=6)
     file_key: str | None = None
     note: str = ""

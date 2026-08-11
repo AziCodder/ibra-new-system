@@ -102,7 +102,7 @@ export default function ProductDetailPanel({
   const shippedNum = Number(product.shipped_quantity ?? 0)
   const acceptedNum = Number(product.accepted_quantity ?? 0)
   const shipments = product.shipments ?? []
-  const rateNum = Number(product.exchange_rate ?? 1)
+  const rateNum = Number(product.exchange_rate) || 1
   const isForeignCurrency = product.currency !== orderCurrency
   const canSave =
     supplierId !== '' &&
@@ -185,10 +185,10 @@ export default function ProductDetailPanel({
               <SummaryRow label="Итого" value={`${formatNumber(total)} ${product.currency}`} />
               {isForeignCurrency && (
                 <>
-                  <SummaryRow label="Курс" value={`1 ${product.currency} = ${rateNum} ${orderCurrency}`} />
+                  <SummaryRow label="Курс" value={`1 ${orderCurrency} = ${rateNum} ${product.currency}`} />
                   <SummaryRow
                     label={`Итого в ${orderCurrency}`}
-                    value={`${formatNumber(total * rateNum)} ${orderCurrency}`}
+                    value={`${formatNumber(total / rateNum)} ${orderCurrency}`}
                   />
                 </>
               )}
