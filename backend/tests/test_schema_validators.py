@@ -32,8 +32,13 @@ def test_ledger_entry_rejects_unknown_currency():
 
 
 def test_order_accepts_known_currency():
-    created = OrderCreate(client_id=1, currency="RUB")
-    assert created.currency == "RUB"
+    created = OrderCreate(client_id=1, currency="USD")
+    assert created.currency == "USD"
+
+
+def test_order_currency_defaults_to_rub():
+    """Most orders are settled in roubles, so that is what the form opens on."""
+    assert OrderCreate(client_id=1).currency == "RUB"
 
 
 @pytest.mark.parametrize(

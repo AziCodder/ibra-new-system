@@ -17,7 +17,7 @@ export default function CreateOrderModal({ onClose }: { onClose: () => void }) {
   const isAdmin = user?.role === 'admin'
 
   const [clientId, setClientId] = useState<number | ''>('')
-  const [currency, setCurrency] = useState('USD')
+  const [currency, setCurrency] = useState('RUB')
   const [details, setDetails] = useState('')
   const [managerId, setManagerId] = useState<number | ''>('')
   const [files, setFiles] = useState<UploadedFile[]>([])

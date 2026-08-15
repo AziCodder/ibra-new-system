@@ -11,7 +11,7 @@ MAX_ORDER_FILES = 5
 
 class OrderCreate(BaseModel):
     client_id: int
-    currency: CurrencyIn = CurrencyIn.USD
+    currency: CurrencyIn = CurrencyIn.RUB
     details: str = ""
     manager_id: int | None = None
     file_keys: list[str] = Field(default_factory=list, max_length=MAX_ORDER_FILES)
