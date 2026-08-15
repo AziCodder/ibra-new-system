@@ -16,6 +16,7 @@ from app.schemas.payment_request import (
     PaymentRequestOut,
     PaymentRequestUpdate,
 )
+from app.services.notification_templates import payment_request_message
 from app.services.notifications import notify
 from app.services.order_access import get_order_for_read as _get_order_for_read
 from app.services.order_access import get_order_for_write as _get_order_for_write
@@ -151,16 +152,22 @@ async def create_payment_request(
     await session.refresh(request)
     out = await _to_payment_request_out(request, session)
 
-    message = (
-        f"По заказу {order.number} выставлен запрос на оплату на сумму {out.total_amount} {out.currency}. "
-        f"Детали: {request.details or '—'}. Реквизиты: {request.requisites or '—'}. "
-        f"Ссылка на заказ: /orders/{order.id}"
+    message = payment_request_message(
+        request_id=request.id,
+        priority=request.priority,
+        requisites=request.requisites,
+        details=request.details,
+        total_amount=out.total_amount,
+        currency=out.currency,
+        order_id=order.id,
     )
+    # The request's own attachments (invoice, screenshot of the requisites) go
+    # with it — that is what the recipient pays against.
     if chosen_targets:
         for t in chosen_targets:
-            notify(t["chat_id"], message)
+            notify(t["chat_id"], message, request.file_keys)
     else:
-        notify(client.telegram_chat_id, message)
+        notify(client.telegram_chat_id, message, request.file_keys)
 
     return out
 

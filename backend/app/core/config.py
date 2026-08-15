@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     session_secret: str = _DEFAULT_SECRET
     upload_dir: str = "./uploads"
     telegram_bot_token: str = ""
+    # Where the links inside Telegram notifications point. Production sets this
+    # to the public address of the app; the default only suits local runs.
+    public_base_url: str = "http://localhost:5173"
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     trusted_hosts: Annotated[list[str], NoDecode] = []
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"

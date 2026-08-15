@@ -4,7 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher, F
 from aiogram.exceptions import AiogramError
 from aiogram.filters import JOIN_TRANSITION, LEAVE_TRANSITION, ChatMemberUpdatedFilter, CommandStart
-from aiogram.types import ChatMemberUpdated, Message
+from aiogram.types import BufferedInputFile, ChatMemberUpdated, Message
 from fastapi import BackgroundTasks
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import select
@@ -191,6 +191,40 @@ async def send_message(chat_id: str | int, text: str) -> bool:
         return False
     await bot.send_message(chat_id=chat_id, text=text)
     return True
+
+
+async def send_document(chat_id: str | int, filename: str, data: bytes) -> bool:
+    bot = get_bot()
+    if bot is None:
+        logger.warning("Telegram bot token not configured; file %s to %s dropped", filename, chat_id)
+        return False
+    await bot.send_document(chat_id=chat_id, document=BufferedInputFile(data, filename=filename))
+    return True
+
+
+async def send_document_with_retries(
+    chat_id: str | int,
+    filename: str,
+    data: bytes,
+    *,
+    max_retries: int = MAX_RETRIES,
+    delay: float = RETRY_DELAY_SECONDS,
+) -> bool:
+    for attempt in range(1, max_retries + 1):
+        try:
+            delivered = await send_document(chat_id, filename, data)
+        except AiogramError as exc:
+            logger.warning(
+                "Telegram file attempt %d/%d to %s failed: %s",
+                attempt, max_retries, chat_id, exc,
+            )
+            if attempt < max_retries:
+                await asyncio.sleep(delay)
+                continue
+            logger.error("Telegram file delivery to %s gave up after %d attempts", chat_id, max_retries)
+            return False
+        return delivered
+    return False
 
 
 async def send_message_with_retries(

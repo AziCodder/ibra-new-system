@@ -29,7 +29,34 @@ async def _record_delivery(target: str, message: str, delivered: bool, error: st
         logger.exception("notify: could not persist delivery log for %s", target)
 
 
-async def _deliver_and_log(target: str, message: str) -> None:
+async def _deliver_files(target: str, file_keys: list[str]) -> None:
+    """Send the attachments after the text, one document per key.
+
+    Storage keys are what survives an upload, so Telegram shows the file under
+    its stored name — the original filename is not kept anywhere. Each file gets
+    its own log row, so a message that arrived without its attachment is visible
+    rather than silently half-delivered.
+    """
+    from app.services.storage import StorageError, storage
+
+    for key in file_keys:
+        delivered = False
+        error = ""
+        try:
+            data = await storage.get(key)
+            delivered = await telegram_bot.send_document_with_retries(target, key, data)
+            if not delivered:
+                error = "file delivery failed after retries (see telegram log for detail)"
+        except StorageError as exc:
+            error = f"file not readable: {exc}"
+            logger.warning("notify: file %s unavailable for %s: %s", key, target, exc)
+        except Exception as exc:  # noqa: BLE001 - background task must not crash
+            error = str(exc)
+            logger.exception("notify: unexpected error sending file %s to %s", key, target)
+        await _record_delivery(target, f"[файл] {key}", delivered, error)
+
+
+async def _deliver_and_log(target: str, message: str, file_keys: list[str] | None = None) -> None:
     """Deliver in the background and record the outcome; never raise.
 
     Transport-level failures are already caught inside
@@ -49,8 +76,13 @@ async def _deliver_and_log(target: str, message: str) -> None:
         logger.exception("notify: unexpected error delivering to %s", target)
     await _record_delivery(target, message, delivered, error)
 
+    # Attachments follow the text, and only if the text made it: a lone file with
+    # no message would tell the reader nothing.
+    if delivered and file_keys:
+        await _deliver_files(target, file_keys)
 
-def notify(target: str, message: str) -> None:
+
+def notify(target: str, message: str, file_keys: list[str] | None = None) -> None:
     """Fire-and-forget notification entry point (single integration point).
 
     Schedules background delivery (with retries) via the Telegram transport so
@@ -70,6 +102,6 @@ def notify(target: str, message: str) -> None:
         logger.warning("notify: no running event loop; message to %s not scheduled", target)
         return
 
-    task = loop.create_task(_deliver_and_log(target, message))
+    task = loop.create_task(_deliver_and_log(target, message, file_keys))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

@@ -31,6 +31,9 @@ services:
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost}
       UPLOAD_DIR: /var/lib/ibra/uploads
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # Links in Telegram notifications point here — set it to the address the
+      # client actually opens, otherwise they lead to localhost.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
       HEALTH_FRONTEND_BASE: http://frontend:80
     volumes:
       - uploads:/var/lib/ibra/uploads

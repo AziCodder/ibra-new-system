@@ -140,14 +140,15 @@ async def test_create_payment_request_calls_notify_with_client_chat_and_order_de
                 )
 
             mock_notify.assert_called_once()
-            target, message = mock_notify.call_args[0]
+            target, message, file_keys = mock_notify.call_args[0]
             # Delivered to the client's Telegram chat id, not the human-facing t.me link.
             assert target == "-1001234567890"
-            assert order.number in message
-            assert "20.00" in message or "20" in message
-            assert "bank details" in message
-            assert "urgent purchase" in message
+            assert message.splitlines()[0] == "#требуетсяоплата"
+            assert "Итого: 20 USD" in message
+            assert "Реквизиты: bank details" in message
+            assert "Детали: urgent purchase" in message
             assert f"/orders/{order.id}" in message  # order link present
+            assert file_keys == []  # nothing was attached to this request
     finally:
         await _cleanup(client.id, supplier.id, [owner.id])
 
