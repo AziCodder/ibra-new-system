@@ -26,6 +26,7 @@ from app.services.action_log import log_action
 from app.services.logistics_items import ShipmentLine, get_logistics_items
 from app.services.logistics_notifications import notify_shipment_sent
 from app.services.logistics_validation import LogisticsValidationError, validate_logistics_items
+from app.services.notification_templates import shipment_arrived_message
 from app.services.notifications import notify
 from app.services.order_access import get_order_for_read as _get_order_for_read
 from app.services.order_access import get_order_for_write as _get_order_for_write
@@ -414,22 +415,29 @@ async def notify_logistics_received(
     logistics = await _get_logistics_or_404(order_id, logistics_id, session)
 
     client = (await session.execute(select(Client).where(Client.id == order.client_id))).scalar_one()
-    message = f"Товар по заказу {order.number} получен. Трекинг: {logistics.tracking or '—'}."
+    message = shipment_arrived_message(
+        tracking=logistics.tracking,
+        details=logistics.details,
+        order_id=order.id,
+    )
+    # The waybill goes out again: this is the message the recipient meets the
+    # parcel with, and it may land in a different chat than the departure notice.
+    file_keys = [logistics.invoice_file_key] if logistics.invoice_file_key else []
 
     targets = await get_client_send_targets(client, session)
     if not targets:
-        notify(client.telegram_chat_id, message)
+        notify(client.telegram_chat_id, message, file_keys)
         return
 
     group_ids = body.group_ids if body is not None else None
     if group_ids is None:
         if len(targets) > 1:
             raise HTTPException(status_code=409, detail={"available_groups": targets})
-        notify(targets[0]["chat_id"], message)
+        notify(targets[0]["chat_id"], message, file_keys)
         return
 
     chosen = [t for t in targets if t["group_id"] in group_ids]
     if not chosen:
         raise HTTPException(status_code=422, detail="No valid group_ids for this client")
     for t in chosen:
-        notify(t["chat_id"], message)
+        notify(t["chat_id"], message, file_keys)

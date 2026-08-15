@@ -85,6 +85,22 @@ def shipment_sent_message(
     )
 
 
+def shipment_arrived_message(
+    *,
+    tracking: str | None,
+    details: str,
+    order_id: int,
+) -> str:
+    """«Встречайте груз» — sent from the "Уведомить о получении" button."""
+    return (
+        "#встречайтегруз\n"
+        "\n"
+        f"Трекинг: {tracking or '—'}\n"
+        f"Примечание: {details}\n"
+        f"Ссылка: {order_link(order_id)}"
+    )
+
+
 def payment_made_message(
     *,
     request_id: int,

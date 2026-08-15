@@ -857,11 +857,13 @@ async def test_notify_received_calls_notify_with_client_chat_and_tracking():
                 await notify_logistics_received(order.id, created.id, None, owner, session)
 
             mock_notify.assert_called_once()
-            target, message = mock_notify.call_args[0]
+            target, message, file_keys = mock_notify.call_args[0]
             # Delivered to the client's Telegram chat id, not the human-facing t.me link.
             assert target == "-1005550001"
-            assert order.number in message
-            assert "M77-170566" in message
+            assert message.splitlines()[0] == "#встречайтегруз"
+            assert "Трекинг: M77-170566" in message
+            assert f"/orders/{order.id}" in message
+            assert file_keys == []  # no waybill was attached to this shipment
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
 
@@ -965,7 +967,7 @@ async def test_notify_received_sends_to_chosen_group_when_group_ids_given():
                     order.id, created.id, NotifyLogisticsReceivedIn(group_ids=[group_a_id]), owner, session
                 )
             mock_notify.assert_called_once()
-            target, message = mock_notify.call_args[0]
+            target, message, _file_keys = mock_notify.call_args[0]
             assert target == "-100902001"
             assert "M77-CHOSEN" in message
     finally:

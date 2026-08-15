@@ -14,6 +14,7 @@ from app.services.notification_templates import (
     format_rate,
     payment_made_message,
     payment_request_message,
+    shipment_arrived_message,
     shipment_sent_message,
 )
 
@@ -110,6 +111,26 @@ def test_shipment_sent_message_matches_the_agreed_layout(monkeypatch):
         "#грузвыехал\n"
         "\n"
         "Дата отправки: 13.08.2026\n"
+        "Трекинг: M65-0331-1\n"
+        "Примечание: В посылке был еще другой товар\n"
+        "Ссылка: https://82.25.60.93/orders/420"
+    )
+
+
+def test_shipment_arrived_message_matches_the_agreed_layout(monkeypatch):
+    from app.core import config
+
+    monkeypatch.setattr(config.settings, "public_base_url", "https://82.25.60.93")
+
+    message = shipment_arrived_message(
+        tracking="M65-0331-1",
+        details="В посылке был еще другой товар",
+        order_id=420,
+    )
+
+    assert message == (
+        "#встречайтегруз\n"
+        "\n"
         "Трекинг: M65-0331-1\n"
         "Примечание: В посылке был еще другой товар\n"
         "Ссылка: https://82.25.60.93/orders/420"
