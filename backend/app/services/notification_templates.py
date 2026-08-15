@@ -4,6 +4,7 @@ Every template opens with its hashtag on the first line — that is what the cli
 filters their chats by, so the tag must stay the very first thing in the message.
 """
 
+from datetime import datetime
 from decimal import Decimal
 
 from app.core.config import settings
@@ -58,6 +59,28 @@ def payment_request_message(
         f"Детали: {details}\n"
         f"Итого: {format_amount(total_amount)} {currency}\n"
         "\n"
+        f"Ссылка: {order_link(order_id)}"
+    )
+
+
+def format_date(value: datetime) -> str:
+    return value.strftime("%d.%m.%Y")
+
+
+def shipment_sent_message(
+    *,
+    ship_date: datetime,
+    tracking: str | None,
+    details: str,
+    order_id: int,
+) -> str:
+    """«Груз выехал» — sent when a shipment is created."""
+    return (
+        "#грузвыехал\n"
+        "\n"
+        f"Дата отправки: {format_date(ship_date)}\n"
+        f"Трекинг: {tracking or '—'}\n"
+        f"Примечание: {details}\n"
         f"Ссылка: {order_link(order_id)}"
     )
 

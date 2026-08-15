@@ -2,6 +2,7 @@
 so both the tag and the layout below it are part of the contract."""
 
 import asyncio
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
@@ -13,6 +14,7 @@ from app.services.notification_templates import (
     format_rate,
     payment_made_message,
     payment_request_message,
+    shipment_sent_message,
 )
 
 REQUISITES = "周斯丽6217007200052740738中国建设银行股份有限公司深圳上步支行"
@@ -90,6 +92,35 @@ def test_payment_made_message_matches_the_agreed_layout(monkeypatch):
         "Примечание: остаток отправим позже\n"
         "Ссылка: https://82.25.60.93/orders/420"
     )
+
+
+def test_shipment_sent_message_matches_the_agreed_layout(monkeypatch):
+    from app.core import config
+
+    monkeypatch.setattr(config.settings, "public_base_url", "https://82.25.60.93")
+
+    message = shipment_sent_message(
+        ship_date=datetime(2026, 8, 13, 6, 30, tzinfo=UTC),
+        tracking="M65-0331-1",
+        details="В посылке был еще другой товар",
+        order_id=420,
+    )
+
+    assert message == (
+        "#грузвыехал\n"
+        "\n"
+        "Дата отправки: 13.08.2026\n"
+        "Трекинг: M65-0331-1\n"
+        "Примечание: В посылке был еще другой товар\n"
+        "Ссылка: https://82.25.60.93/orders/420"
+    )
+
+
+def test_shipment_without_tracking_still_reads_cleanly():
+    message = shipment_sent_message(
+        ship_date=datetime(2026, 8, 13, tzinfo=UTC), tracking=None, details="", order_id=1
+    )
+    assert "Трекинг: —" in message
 
 
 @pytest.mark.parametrize(

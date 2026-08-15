@@ -92,6 +92,59 @@ async def _cleanup(client_id: int, supplier_id: int, user_ids: list[int]):
 
 
 @pytest.mark.asyncio
+async def test_creating_a_shipment_announces_it_with_the_waybill():
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            with patch("app.services.logistics_notifications.notify_targets") as mock_notify:
+                await create_logistics(
+                    order.id,
+                    LogisticsCreate(
+                        items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                        tracking="M65-0331-1",
+                        ship_date=SHIP_DATE,
+                        details="В посылке был еще другой товар",
+                        invoice_file_key="waybill.pdf",
+                    ),
+                    owner,
+                    session,
+                )
+
+            mock_notify.assert_called_once()
+            _targets, fallback, message, file_keys = mock_notify.call_args[0]
+            assert fallback == "-1005550001"
+            assert message.splitlines()[0] == "#грузвыехал"
+            assert "Трекинг: M65-0331-1" in message
+            assert "Примечание: В посылке был еще другой товар" in message
+            assert file_keys == ["waybill.pdf"]
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
+async def test_a_shipment_entered_as_already_accepted_is_not_announced():
+    """Back-dating a received shipment is bookkeeping, not a departure."""
+    client, supplier, owner, other, observer, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            with patch("app.services.logistics_notifications.notify_targets") as mock_notify:
+                await create_logistics(
+                    order.id,
+                    LogisticsCreate(
+                        items=[LogisticsItemIn(product_id=product.id, quantity=Decimal("5"))],
+                        tracking="M65-0331-2",
+                        ship_date=SHIP_DATE,
+                        status=LogisticsStatus.accepted,
+                    ),
+                    admin,
+                    session,
+                )
+            mock_notify.assert_not_called()
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])
+
+
+@pytest.mark.asyncio
 async def test_create_list_get_update_delete_lifecycle():
     client, supplier, owner, other, observer, admin, order, product = await _setup()
     try:

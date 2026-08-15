@@ -24,6 +24,7 @@ from app.schemas.logistics import (
 from app.schemas.logistics_comment import LogisticsCommentCreate, LogisticsCommentOut
 from app.services.action_log import log_action
 from app.services.logistics_items import ShipmentLine, get_logistics_items
+from app.services.logistics_notifications import notify_shipment_sent
 from app.services.logistics_validation import LogisticsValidationError, validate_logistics_items
 from app.services.notifications import notify
 from app.services.order_access import get_order_for_read as _get_order_for_read
@@ -210,6 +211,7 @@ async def create_logistics(
         await session.rollback()
         raise HTTPException(status_code=409, detail="Tracking number already exists in the system")
     await session.refresh(logistics)
+    await notify_shipment_sent(logistics, session)
     return await _to_logistics_out(logistics, session)
 
 
