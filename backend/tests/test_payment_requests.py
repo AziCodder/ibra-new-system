@@ -7,11 +7,13 @@ from sqlalchemy import delete, select
 from app.core.database import async_session_factory
 from app.models.client import Client
 from app.models.order import Order, OrderStatus
+from app.models.payment import Payment
 from app.models.payment_request import PaymentRequest, PaymentRequestItem, PaymentRequestPriority
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
 from app.routers.orders import delete_order
+from app.routers.payment_requests_global import list_all_payment_requests
 from app.routers.products import delete_product
 from app.services.order_dependencies import count_order_dependencies
 from app.services.product_dependencies import count_product_dependencies
@@ -57,6 +59,13 @@ async def _setup():
 async def _cleanup(client_id: int, supplier_id: int):
     async with async_session_factory() as session:
         order_ids = select(Order.id).where(Order.client_id == client_id)
+        await session.execute(
+            delete(Payment).where(
+                Payment.payment_request_id.in_(
+                    select(PaymentRequest.id).where(PaymentRequest.order_id.in_(order_ids))
+                )
+            )
+        )
         await session.execute(
             delete(PaymentRequestItem).where(
                 PaymentRequestItem.payment_request_id.in_(
@@ -202,5 +211,47 @@ async def test_delete_product_blocked_when_referenced_by_payment_request_item():
             with pytest.raises(HTTPException) as exc_info:
                 await delete_product(order.id, product.id, admin, session)
             assert exc_info.value.status_code == 409
+    finally:
+        await _cleanup(client.id, supplier.id)
+
+
+@pytest.mark.asyncio
+async def test_all_payment_requests_hides_settled_requests_by_default():
+    """The payments page is a worklist, so a fully paid request only shows on demand."""
+    client, supplier, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            open_req = PaymentRequest(order_id=order.id, created_by_id=admin.id)
+            settled_req = PaymentRequest(order_id=order.id, created_by_id=admin.id)
+            session.add_all([open_req, settled_req])
+            await session.commit()
+            await session.refresh(open_req)
+            await session.refresh(settled_req)
+
+            session.add_all([
+                PaymentRequestItem(payment_request_id=open_req.id, product_id=product.id, amount=Decimal("25.00")),
+                PaymentRequestItem(payment_request_id=settled_req.id, product_id=product.id, amount=Decimal("25.00")),
+                Payment(payment_request_id=settled_req.id, author_id=admin.id, amount=Decimal("25.00"),
+                        currency="USD", exchange_rate=Decimal("1")),
+            ])
+            await session.commit()
+
+        # Every parameter is passed explicitly: called outside FastAPI, the Query()
+        # defaults would arrive as Query objects rather than their values.
+        async with async_session_factory() as session:
+            default = await list_all_payment_requests(
+                manager_id=None, client_id=None, search=None, sort="desc",
+                remaining="positive", user=admin, session=session,
+            )
+            ids = {r.id for r in default}
+            assert open_req.id in ids
+            assert settled_req.id not in ids
+
+        async with async_session_factory() as session:
+            everything = await list_all_payment_requests(
+                manager_id=None, client_id=None, search=None, sort="desc",
+                remaining="all", user=admin, session=session,
+            )
+            assert {open_req.id, settled_req.id} <= {r.id for r in everything}
     finally:
         await _cleanup(client.id, supplier.id)

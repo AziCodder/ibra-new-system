@@ -77,17 +77,22 @@ export interface PaymentRequestSummary extends PaymentRequest {
   order_currency: string
 }
 
+/** 'positive' (the server default) keeps only requests that still owe money. */
+export type RemainingFilter = 'positive' | 'all'
+
 export async function fetchAllPaymentRequests(params?: {
   manager_id?: number
   client_id?: number
   search?: string
   sort?: 'asc' | 'desc'
+  remaining?: RemainingFilter
 }): Promise<PaymentRequestSummary[]> {
   const url = new URL('/api/payment-requests/', window.location.origin)
   if (params?.manager_id) url.searchParams.set('manager_id', String(params.manager_id))
   if (params?.client_id) url.searchParams.set('client_id', String(params.client_id))
   if (params?.search) url.searchParams.set('search', params.search)
   if (params?.sort) url.searchParams.set('sort', params.sort)
+  if (params?.remaining) url.searchParams.set('remaining', params.remaining)
   const res = await fetch(url.toString(), { credentials: 'include' })
   if (!res.ok) throw new Error('Failed to fetch payment requests')
   return res.json()

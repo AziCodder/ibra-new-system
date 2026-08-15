@@ -77,6 +77,9 @@ async def list_all_payment_requests(
     client_id: int | None = Query(default=None),
     search: str | None = Query(default=None),
     sort: Literal["asc", "desc"] = Query(default="desc"),
+    # This page is a worklist — "what still has to be paid" — so settled requests
+    # are hidden unless explicitly asked for.
+    remaining: Literal["positive", "all"] = Query(default="positive"),
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> list[PaymentRequestSummaryOut]:
@@ -103,7 +106,13 @@ async def list_all_payment_requests(
     )
 
     rows = (await session.execute(stmt)).all()
-    return [await _to_summary_out(pr, order, client, mgr, session) for pr, order, client, mgr in rows]
+    summaries = [await _to_summary_out(pr, order, client, mgr, session) for pr, order, client, mgr in rows]
+
+    # remaining_amount is derived from the payments (see _to_summary_out), not a
+    # column, so the filter runs here rather than in the query.
+    if remaining == "positive":
+        summaries = [s for s in summaries if s.remaining_amount > 0]
+    return summaries
 
 
 @router.post("/{request_id}/payments", response_model=PaymentOut, status_code=201)

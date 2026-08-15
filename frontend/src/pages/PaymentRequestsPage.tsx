@@ -5,6 +5,7 @@ import {
   fetchAllPaymentRequests,
   type PaymentRequestSummary,
   type PaymentRequestPriority,
+  type RemainingFilter,
 } from '../api/paymentRequests'
 import { fetchClients } from '../api/clients'
 import { fetchUsers } from '../api/users'
@@ -40,11 +41,13 @@ export default function PaymentRequestsPage() {
   const [managerId, setManagerId] = useState<number | undefined>()
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<'asc' | 'desc'>('desc')
+  // Default view is the worklist: only requests that still owe money.
+  const [remaining, setRemaining] = useState<RemainingFilter>('positive')
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
   const { data: requests, isLoading, isError, refetch } = useQuery({
-    queryKey: ['all-payment-requests', clientId, managerId, search, sort],
-    queryFn: () => fetchAllPaymentRequests({ client_id: clientId, manager_id: managerId, search: search || undefined, sort }),
+    queryKey: ['all-payment-requests', clientId, managerId, search, sort, remaining],
+    queryFn: () => fetchAllPaymentRequests({ client_id: clientId, manager_id: managerId, search: search || undefined, sort, remaining }),
   })
 
   const selected = requests?.find((r) => r.id === selectedId) ?? null
@@ -107,6 +110,16 @@ export default function PaymentRequestsPage() {
             ))}
           </select>
 
+          <select
+            value={remaining}
+            onChange={(e) => setRemaining(e.target.value as RemainingFilter)}
+            className="text-sm outline-none w-full sm:w-auto px-3"
+            style={{ height: 32, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', color: 'var(--color-text)' }}
+          >
+            <option value="positive">С остатком</option>
+            <option value="all">Все заявки</option>
+          </select>
+
           <button
             onClick={() => setSort((s) => (s === 'desc' ? 'asc' : 'desc'))}
             className="text-sm cursor-pointer w-full sm:w-auto px-3"
@@ -134,7 +147,9 @@ export default function PaymentRequestsPage() {
           style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)', boxShadow: 'var(--shadow-card)' }}
         >
           <div className="mb-3" style={{ color: 'var(--color-faint)' }}><svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg></div>
-          <div className="text-sm" style={{ color: 'var(--color-muted)' }}>Запросов на оплату нет</div>
+          <div className="text-sm" style={{ color: 'var(--color-muted)' }}>
+            {remaining === 'positive' ? 'Заявок с остатком нет' : 'Запросов на оплату нет'}
+          </div>
         </div>
       )}
 
