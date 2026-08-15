@@ -11,8 +11,8 @@ from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.payment import PaymentCreate, PaymentOut, PaymentUpdate
 from app.services.order_access import get_order_for_read as _get_order_for_read
-from app.services.payment_notifications import notify_payment_recorded
 from app.services.order_access import get_order_for_write as _get_order_for_write
+from app.services.payment_notifications import notify_payment_recorded
 from app.services.payment_remaining import get_payment_request_remaining, get_payment_request_remaining_excluding
 
 router = APIRouter(prefix="/api/orders/{order_id}/payment-requests/{request_id}/payments", tags=["payments"])

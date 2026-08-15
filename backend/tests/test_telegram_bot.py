@@ -1,14 +1,13 @@
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aiogram.exceptions import TelegramBadRequest, TelegramNetworkError
+from aiogram.exceptions import TelegramNetworkError
 from sqlalchemy import delete, select
 
 from app.core.config import settings
 from app.core.database import async_session_factory
 from app.models.client import Client
-from app.models.telegram_group import ClientTelegramGroup, TelegramGroup
+from app.models.telegram_group import TelegramGroup
 from app.services import telegram_bot
 
 # A syntactically valid (but fake) bot token so aiogram's Bot() constructor accepts it.
