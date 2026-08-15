@@ -6,15 +6,18 @@ from app.models.telegram_group import ClientTelegramGroup, TelegramGroup
 
 
 async def get_client_send_targets(client: Client, session: AsyncSession) -> list[dict]:
-    """Telegram groups `client` is linked to, ordered by title.
+    """Telegram chats the admin attached to `client`, ordered by title.
 
-    Empty list means 0 groups — callers fall back to client.telegram_chat_id
+    Chats the bot has been removed from are skipped — nothing can be delivered
+    there, and offering them as a target would only produce silent failures.
+
+    Empty list means 0 chats — callers fall back to client.telegram_chat_id
     (the private chat), exactly matching today's single-target behavior.
     """
     result = await session.execute(
         select(TelegramGroup.id, TelegramGroup.chat_id, TelegramGroup.title)
         .join(ClientTelegramGroup, ClientTelegramGroup.group_id == TelegramGroup.id)
-        .where(ClientTelegramGroup.client_id == client.id)
+        .where(ClientTelegramGroup.client_id == client.id, TelegramGroup.is_active.is_(True))
         .order_by(TelegramGroup.title)
     )
     return [{"group_id": row.id, "chat_id": row.chat_id, "title": row.title} for row in result.all()]

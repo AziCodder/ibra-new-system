@@ -195,163 +195,26 @@ async def test_upsert_group_creates_then_reuses_row():
 
 
 @pytest.mark.asyncio
-async def test_link_client_to_group_is_idempotent():
+async def test_upsert_group_reactivates_a_chat_the_bot_was_removed_from():
+    """Re-adding the bot makes the chat deliverable again, links and all."""
     async with async_session_factory() as session:
-        client = Client(code="TSTLINK", full_name="Link Test Client", telegram_chat_id="555111")
-        group = TelegramGroup(chat_id="-100222333", title="Link Test Group")
-        session.add_all([client, group])
+        group = TelegramGroup(chat_id="-100999888", title="Kicked Group", is_active=False)
+        session.add(group)
         await session.commit()
-        await session.refresh(client)
         await session.refresh(group)
-        client_id, group_id = client.id, group.id
+        group_id = group.id
 
     try:
         async with async_session_factory() as session:
-            await telegram_bot._link_client_to_group(session, client_id, group_id)
-            await telegram_bot._link_client_to_group(session, client_id, group_id)
+            await telegram_bot._upsert_group(session, "-100999888", "Kicked Group")
             await session.commit()
 
         async with async_session_factory() as session:
-            rows = (
-                await session.execute(
-                    select(ClientTelegramGroup).where(
-                        ClientTelegramGroup.client_id == client_id,
-                        ClientTelegramGroup.group_id == group_id,
-                    )
-                )
-            ).scalars().all()
-            assert len(rows) == 1
+            loaded = (
+                await session.execute(select(TelegramGroup).where(TelegramGroup.id == group_id))
+            ).scalar_one()
+            assert loaded.is_active is True
     finally:
         async with async_session_factory() as session:
-            await session.execute(delete(ClientTelegramGroup).where(ClientTelegramGroup.client_id == client_id))
-            await session.execute(delete(Client).where(Client.id == client_id))
             await session.execute(delete(TelegramGroup).where(TelegramGroup.id == group_id))
-            await session.commit()
-
-
-@pytest.mark.asyncio
-async def test_unlink_client_from_group_removes_row_and_is_idempotent():
-    async with async_session_factory() as session:
-        client = Client(code="TSTUNLINK", full_name="Unlink Test Client", telegram_chat_id="555222")
-        group = TelegramGroup(chat_id="-100333444", title="Unlink Test Group")
-        session.add_all([client, group])
-        await session.commit()
-        await session.refresh(client)
-        await session.refresh(group)
-        client_id, group_id = client.id, group.id
-
-    try:
-        async with async_session_factory() as session:
-            await telegram_bot._link_client_to_group(session, client_id, group_id)
-            await session.commit()
-
-        async with async_session_factory() as session:
-            await telegram_bot._unlink_client_from_group(session, client_id, group_id)
-            await telegram_bot._unlink_client_from_group(session, client_id, group_id)  # idempotent no-op
-            await session.commit()
-
-        async with async_session_factory() as session:
-            rows = (
-                await session.execute(
-                    select(ClientTelegramGroup).where(
-                        ClientTelegramGroup.client_id == client_id,
-                        ClientTelegramGroup.group_id == group_id,
-                    )
-                )
-            ).scalars().all()
-            assert rows == []
-    finally:
-        async with async_session_factory() as session:
-            await session.execute(delete(Client).where(Client.id == client_id))
-            await session.execute(delete(TelegramGroup).where(TelegramGroup.id == group_id))
-            await session.commit()
-
-
-@pytest.mark.asyncio
-async def test_backfill_group_members_links_existing_members_and_skips_non_members():
-    async with async_session_factory() as session:
-        member_client = Client(code="TSTBFM1", full_name="Member Client", telegram_chat_id="700001")
-        stranger_client = Client(code="TSTBFM2", full_name="Stranger Client", telegram_chat_id="700002")
-        group = TelegramGroup(chat_id="-100444555", title="Backfill Group")
-        session.add_all([member_client, stranger_client, group])
-        await session.commit()
-        for obj in (member_client, stranger_client, group):
-            await session.refresh(obj)
-        member_id, stranger_id, group_id = member_client.id, stranger_client.id, group.id
-
-    def fake_get_chat_member(_chat_id, user_id):
-        if user_id == 700001:
-            return SimpleNamespace(status="member")
-        raise TelegramBadRequest(method=None, message="user not found")
-
-    fake_bot = AsyncMock()
-    fake_bot.get_chat_member = AsyncMock(side_effect=fake_get_chat_member)
-
-    try:
-        async with async_session_factory() as session:
-            group_obj = (await session.execute(select(TelegramGroup).where(TelegramGroup.id == group_id))).scalar_one()
-            await telegram_bot._backfill_group_members(session, fake_bot, group_obj)
-            await session.commit()
-
-        async with async_session_factory() as session:
-            linked_client_ids = {
-                row[0]
-                for row in (
-                    await session.execute(
-                        select(ClientTelegramGroup.client_id).where(ClientTelegramGroup.group_id == group_id)
-                    )
-                ).all()
-            }
-            assert linked_client_ids == {member_id}
-    finally:
-        async with async_session_factory() as session:
-            await session.execute(delete(ClientTelegramGroup).where(ClientTelegramGroup.group_id == group_id))
-            await session.execute(delete(Client).where(Client.id.in_([member_id, stranger_id])))
-            await session.execute(delete(TelegramGroup).where(TelegramGroup.id == group_id))
-            await session.commit()
-
-
-@pytest.mark.asyncio
-async def test_backfill_client_groups_links_client_to_groups_already_joined():
-    async with async_session_factory() as session:
-        client = Client(code="TSTBFC1", full_name="Backfill Client", telegram_chat_id="800001")
-        joined_group = TelegramGroup(chat_id="-100555666", title="Already Joined Group")
-        other_group = TelegramGroup(chat_id="-100666777", title="Other Group")
-        session.add_all([client, joined_group, other_group])
-        await session.commit()
-        for obj in (client, joined_group, other_group):
-            await session.refresh(obj)
-        client_id, joined_group_id, other_group_id = client.id, joined_group.id, other_group.id
-
-    def fake_get_chat_member(chat_id, _user_id):
-        if chat_id == joined_group.chat_id:
-            return SimpleNamespace(status="member")
-        raise TelegramBadRequest(method=None, message="user not found")
-
-    fake_bot = AsyncMock()
-    fake_bot.get_chat_member = AsyncMock(side_effect=fake_get_chat_member)
-
-    try:
-        async with async_session_factory() as session:
-            client_obj = (await session.execute(select(Client).where(Client.id == client_id))).scalar_one()
-            await telegram_bot._backfill_client_groups(session, fake_bot, client_obj)
-            await session.commit()
-
-        async with async_session_factory() as session:
-            linked_group_ids = {
-                row[0]
-                for row in (
-                    await session.execute(
-                        select(ClientTelegramGroup.group_id).where(ClientTelegramGroup.client_id == client_id)
-                    )
-                ).all()
-            }
-            assert linked_group_ids == {joined_group_id}
-    finally:
-        async with async_session_factory() as session:
-            await session.execute(delete(ClientTelegramGroup).where(ClientTelegramGroup.client_id == client_id))
-            await session.execute(delete(Client).where(Client.id == client_id))
-            await session.execute(
-                delete(TelegramGroup).where(TelegramGroup.id.in_([joined_group_id, other_group_id]))
-            )
             await session.commit()

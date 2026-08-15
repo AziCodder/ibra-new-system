@@ -28,6 +28,7 @@ from app.routers.products import router as products_router
 from app.routers.profit import router as profit_router
 from app.routers.suppliers import router as suppliers_router
 from app.routers.system_health import router as system_health_router
+from app.routers.telegram_groups import router as telegram_groups_router
 from app.routers.users import router as users_router
 from app.services.telegram_bot import close_bot, start_polling, stop_polling
 
@@ -89,6 +90,7 @@ app.include_router(products_router)
 app.include_router(profit_router)
 app.include_router(suppliers_router)
 app.include_router(system_health_router)
+app.include_router(telegram_groups_router)
 app.include_router(users_router)
 
 app.add_exception_handler(Exception, unhandled_exception_handler)

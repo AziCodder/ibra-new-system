@@ -2,17 +2,17 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.exceptions import AiogramError, TelegramBadRequest, TelegramForbiddenError
-from aiogram.filters import IS_MEMBER, JOIN_TRANSITION, LEAVE_TRANSITION, ChatMemberUpdatedFilter, CommandStart
+from aiogram.exceptions import AiogramError
+from aiogram.filters import JOIN_TRANSITION, LEAVE_TRANSITION, ChatMemberUpdatedFilter, CommandStart
 from aiogram.types import ChatMemberUpdated, Message
 from fastapi import BackgroundTasks
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.client import Client
-from app.models.telegram_group import ClientTelegramGroup, TelegramGroup
+from app.models.telegram_group import TelegramGroup
 
 logger = logging.getLogger("telegram")
 
@@ -37,70 +37,22 @@ def get_bot() -> Bot | None:
 
 
 async def _upsert_group(session: AsyncSession, chat_id: str, title: str) -> TelegramGroup:
-    """Find-or-create the TelegramGroup row for chat_id; refresh title if changed."""
+    """Find-or-create the TelegramGroup row for chat_id; refresh title if changed.
+
+    Which clients a chat serves is the admin's call (see routers/telegram_groups.py);
+    the bot only keeps the catalogue of chats it can reach up to date.
+    """
     result = await session.execute(select(TelegramGroup).where(TelegramGroup.chat_id == chat_id))
     group = result.scalar_one_or_none()
     if group is None:
         group = TelegramGroup(chat_id=chat_id, title=title)
         session.add(group)
         await session.flush()
-    elif title and group.title != title:
+        return group
+    if title and group.title != title:
         group.title = title
+    group.is_active = True
     return group
-
-
-async def _link_client_to_group(session: AsyncSession, client_id: int, group_id: int) -> None:
-    """Idempotently record that client_id is a member of group_id."""
-    exists = await session.execute(
-        select(ClientTelegramGroup.id).where(
-            ClientTelegramGroup.client_id == client_id,
-            ClientTelegramGroup.group_id == group_id,
-        )
-    )
-    if exists.scalar_one_or_none() is not None:
-        return
-    session.add(ClientTelegramGroup(client_id=client_id, group_id=group_id))
-    await session.flush()
-
-
-async def _unlink_client_from_group(session: AsyncSession, client_id: int, group_id: int) -> None:
-    """Remove the membership row, if any, when a client leaves/is removed from a group."""
-    await session.execute(
-        delete(ClientTelegramGroup).where(
-            ClientTelegramGroup.client_id == client_id,
-            ClientTelegramGroup.group_id == group_id,
-        )
-    )
-
-
-async def _backfill_group_members(session: AsyncSession, bot: Bot, group: TelegramGroup) -> None:
-    """When the bot joins a group, probe every already-linked client for pre-existing membership."""
-    clients = (await session.execute(select(Client).where(Client.telegram_chat_id != ""))).scalars().all()
-    for client in clients:
-        try:
-            member = await bot.get_chat_member(group.chat_id, int(client.telegram_chat_id))
-        except TelegramBadRequest:
-            continue
-        except (TelegramForbiddenError, ValueError):
-            logger.warning("Backfill sweep skipped for group %s / client %s", group.chat_id, client.id)
-            continue
-        if IS_MEMBER.check(member=member):
-            await _link_client_to_group(session, client.id, group.id)
-
-
-async def _backfill_client_groups(session: AsyncSession, bot: Bot, client: Client) -> None:
-    """When a client links their account, probe every known group for pre-existing membership."""
-    groups = (await session.execute(select(TelegramGroup))).scalars().all()
-    for group in groups:
-        try:
-            member = await bot.get_chat_member(group.chat_id, int(client.telegram_chat_id))
-        except TelegramBadRequest:
-            continue
-        except (TelegramForbiddenError, ValueError):
-            logger.warning("Backfill sweep skipped for group %s / client %s", group.chat_id, client.id)
-            continue
-        if IS_MEMBER.check(member=member):
-            await _link_client_to_group(session, client.id, group.id)
 
 
 def _get_dispatcher() -> Dispatcher:
@@ -111,7 +63,7 @@ def _get_dispatcher() -> Dispatcher:
     _dp = Dispatcher()
 
     @_dp.message(CommandStart())
-    async def handle_start(message: Message, bot: Bot) -> None:
+    async def handle_start(message: Message) -> None:
         from app.core.database import async_session_factory
 
         chat_id = str(message.chat.id)
@@ -170,64 +122,23 @@ def _get_dispatcher() -> Dispatcher:
             await session.commit()
             client_name = client.full_name
 
-            await _backfill_client_groups(session, bot, client)
-            await session.commit()
-
         await message.answer(
             f"✅ Чат успешно привязан к клиенту <b>{client_name}</b>! "
             "Теперь вы будете получать уведомления здесь.",
             parse_mode="HTML",
         )
 
-    @_dp.message(F.new_chat_members)
-    async def handle_new_chat_members(message: Message) -> None:
-        from app.core.database import async_session_factory
-
-        chat_id = str(message.chat.id)
-        async with async_session_factory() as session:
-            group = await _upsert_group(session, chat_id, message.chat.title or "")
-            await session.commit()
-            for member_user in message.new_chat_members:
-                if member_user.is_bot:
-                    continue
-                result = await session.execute(
-                    select(Client).where(Client.telegram_chat_id == str(member_user.id))
-                )
-                client = result.scalar_one_or_none()
-                if client is not None:
-                    await _link_client_to_group(session, client.id, group.id)
-            await session.commit()
-
-    @_dp.message(F.left_chat_member)
-    async def handle_left_chat_member(message: Message) -> None:
-        from app.core.database import async_session_factory
-
-        left_user = message.left_chat_member
-        if left_user is None or left_user.is_bot:
-            return
-
-        async with async_session_factory() as session:
-            client = (
-                await session.execute(select(Client).where(Client.telegram_chat_id == str(left_user.id)))
-            ).scalar_one_or_none()
-            group = (
-                await session.execute(select(TelegramGroup).where(TelegramGroup.chat_id == str(message.chat.id)))
-            ).scalar_one_or_none()
-            if client is not None and group is not None:
-                await _unlink_client_from_group(session, client.id, group.id)
-                await session.commit()
-
     @_dp.my_chat_member(
         F.chat.type.in_({"group", "supergroup"}),
         ChatMemberUpdatedFilter(member_status_changed=JOIN_TRANSITION),
     )
-    async def handle_bot_added_to_group(event: ChatMemberUpdated, bot: Bot) -> None:
+    async def handle_bot_added_to_group(event: ChatMemberUpdated) -> None:
+        """Bot added to a chat -> the chat shows up in the admin's list, ready to
+        be attached to clients. Adding the bot links nothing on its own."""
         from app.core.database import async_session_factory
 
         async with async_session_factory() as session:
-            group = await _upsert_group(session, str(event.chat.id), event.chat.title or "")
-            await session.commit()
-            await _backfill_group_members(session, bot, group)
+            await _upsert_group(session, str(event.chat.id), event.chat.title or "")
             await session.commit()
 
     @_dp.my_chat_member(
@@ -235,9 +146,8 @@ def _get_dispatcher() -> Dispatcher:
         ChatMemberUpdatedFilter(member_status_changed=LEAVE_TRANSITION),
     )
     async def handle_bot_removed_from_group(event: ChatMemberUpdated) -> None:
-        """Bot removed from a group -> drop its client links so notify() never
-        silently targets an unreachable chat. The TelegramGroup row itself stays
-        (harmless, reused if the bot rejoins)."""
+        """Bot removed -> the chat stops being a delivery target, but the client
+        links the admin set stay, so re-adding the bot restores them."""
         from app.core.database import async_session_factory
 
         async with async_session_factory() as session:
@@ -245,7 +155,7 @@ def _get_dispatcher() -> Dispatcher:
                 await session.execute(select(TelegramGroup).where(TelegramGroup.chat_id == str(event.chat.id)))
             ).scalar_one_or_none()
             if group is not None:
-                await session.execute(delete(ClientTelegramGroup).where(ClientTelegramGroup.group_id == group.id))
+                group.is_active = False
                 await session.commit()
 
     return _dp

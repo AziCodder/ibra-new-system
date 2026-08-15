@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -14,11 +14,14 @@ class TelegramGroup(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     chat_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     title: Mapped[str] = mapped_column(String(255), default="")
+    # False once the bot is removed from the chat: nothing can be delivered there
+    # anymore, but the admin's client links survive until the bot is added back.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ClientTelegramGroup(Base):
-    """Membership link: client_id is (or was) present in group_id.
+    """An admin's decision to send client_id's notifications to group_id.
 
     Both FKs cascade — a membership row has no meaning once either side is
     gone, same reasoning as PaymentRequestItem.payment_request_id's existing

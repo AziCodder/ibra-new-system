@@ -7,6 +7,7 @@ import { fetchNotificationLog } from '../api/notifications'
 import { fetchActionLog } from '../api/actionLog'
 import { fetchSystemHealth, type HealthStatus } from '../api/systemHealth'
 import { fetchLogSources, fetchProcessLogs, type LogLine, type LogSource } from '../api/processLogs'
+import { fetchTelegramGroups, setTelegramGroupClients, deleteTelegramGroup, type TelegramGroupAdmin } from '../api/telegramGroups'
 import { useAuth } from '../contexts/AuthContext'
 import ErrorState from '../components/ErrorState'
 import { SkeletonTableRows } from '../components/Skeleton'
@@ -19,12 +20,13 @@ import Tag, { type TagColor } from '../components/Tag'
 import PageHeader from '../components/PageHeader'
 import type { User } from '../api/auth'
 
-type Tab = 'users' | 'clients' | 'suppliers' | 'notifications' | 'action-log' | 'health' | 'process-logs'
+type Tab = 'users' | 'clients' | 'suppliers' | 'telegram' | 'notifications' | 'action-log' | 'health' | 'process-logs'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Пользователи' },
   { key: 'clients', label: 'Клиенты' },
   { key: 'suppliers', label: 'Поставщики' },
+  { key: 'telegram', label: 'Телеграм-чаты' },
   { key: 'notifications', label: 'Уведомления' },
   { key: 'action-log', label: 'Журнал действий' },
   { key: 'health', label: 'Состояние системы' },
@@ -1055,6 +1057,161 @@ function RoleBadge({ role }: { role: string }) {
   return <Tag color={ROLE_COLOR[role] ?? 'default'}>{ROLE_LABELS[role] ?? role}</Tag>
 }
 
+// ── Telegram chats ─────────────────────────────────────────────────────────
+
+/**
+ * Chats register themselves: the bot lands in a group, the group shows up here.
+ * All this screen decides is which clients each chat serves — a chat can serve
+ * several, and a client can be served by several chats.
+ */
+function TelegramGroupsTab() {
+  const queryClient = useQueryClient()
+  const [editId, setEditId] = useState<number | null>(null)
+  const [draftClientIds, setDraftClientIds] = useState<number[]>([])
+  const [saveError, setSaveError] = useState('')
+
+  const { data: groups, isLoading, isError, refetch } = useQuery({
+    queryKey: ['telegram-groups'],
+    queryFn: fetchTelegramGroups,
+  })
+  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
+
+  const nameById = new Map((clients ?? []).map((c) => [c.id, c.full_name]))
+
+  const saveMut = useMutation({
+    mutationFn: ({ id, clientIds }: { id: number; clientIds: number[] }) =>
+      setTelegramGroupClients(id, clientIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['telegram-groups'] })
+      queryClient.invalidateQueries({ queryKey: ['clients'] })
+      setEditId(null)
+      setSaveError('')
+    },
+    onError: (err: Error) => setSaveError(err.message),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteTelegramGroup(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['telegram-groups'] }),
+  })
+
+  function startEdit(group: TelegramGroupAdmin) {
+    setEditId(group.id)
+    setDraftClientIds(group.client_ids)
+    setSaveError('')
+  }
+
+  function toggleClient(clientId: number) {
+    setDraftClientIds((prev) =>
+      prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId]
+    )
+  }
+
+  function confirmDelete(group: TelegramGroupAdmin) {
+    if (!window.confirm(`Убрать чат «${group.title || group.chat_id}» из системы? Привязки к клиентам тоже пропадут.`)) return
+    deleteMut.mutate(group.id)
+  }
+
+  if (isLoading) return <SkeletonTableRows rows={4} />
+  if (isError) return <ErrorState message="Не удалось загрузить телеграм-чаты" onRetry={() => refetch()} />
+
+  if (!groups || groups.length === 0) {
+    return (
+      <div className="rounded-[8px] p-10 text-center text-sm" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)', color: 'var(--color-muted)' }}>
+        Чатов пока нет. Создайте в Telegram чат, добавьте туда нашего бота — чат появится здесь,
+        и его можно будет привязать к клиентам.
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {saveError && (
+        <div className="rounded-lg px-3 py-2 mb-3 text-sm" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
+          {saveError}
+        </div>
+      )}
+
+      <div className="rounded-[8px] overflow-x-auto" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)', boxShadow: 'var(--shadow-card)' }}>
+        <table className="rtable w-full">
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
+              {['Чат', 'Статус', 'Клиенты', ''].map((col) => (
+                <th key={col} className="px-4 py-3 text-left text-xs font-semibold" style={{ color: 'var(--color-muted)' }}>{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((group) => {
+              const isEditing = editId === group.id
+              return (
+                <tr key={group.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  <td className="px-4 py-2.5 text-sm" data-label="Чат" style={{ color: 'var(--color-text)' }}>
+                    <div style={{ fontWeight: 600 }}>{group.title || '(без названия)'}</div>
+                    <div className="text-xs" style={{ color: 'var(--color-muted)' }}>{group.chat_id}</div>
+                  </td>
+                  <td className="px-4 py-2.5 text-sm" data-label="Статус">
+                    {group.is_active
+                      ? <Tag color="green">Бот в чате</Tag>
+                      : <Tag color="red">Бот удалён</Tag>}
+                  </td>
+                  <td className="px-4 py-2.5 text-sm" data-label="Клиенты" style={{ color: 'var(--color-text)' }}>
+                    {isEditing ? (
+                      <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+                        {(clients ?? []).map((c) => (
+                          <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={draftClientIds.includes(c.id)}
+                              onChange={() => toggleClient(c.id)}
+                            />
+                            {c.full_name}
+                          </label>
+                        ))}
+                      </div>
+                    ) : group.client_ids.length === 0 ? (
+                      <span style={{ color: 'var(--color-muted)' }}>— никому не отправляется</span>
+                    ) : (
+                      group.client_ids.map((id) => nameById.get(id) ?? `#${id}`).join(', ')
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-sm text-right whitespace-nowrap" data-label="">
+                    {isEditing ? (
+                      <>
+                        <button
+                          onClick={() => saveMut.mutate({ id: group.id, clientIds: draftClientIds })}
+                          disabled={saveMut.isPending}
+                          title="Сохранить"
+                          className="cursor-pointer mr-3 disabled:opacity-50"
+                          style={{ color: 'var(--color-success)' }}
+                        >
+                          <Save size={16} />
+                        </button>
+                        <button onClick={() => setEditId(null)} title="Отмена" className="cursor-pointer" style={{ color: 'var(--color-muted)' }}>
+                          <X size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => startEdit(group)} title="Изменить клиентов" className="cursor-pointer mr-3" style={{ color: 'var(--color-primary)' }}>
+                          <Pencil size={16} />
+                        </button>
+                        <button onClick={() => confirmDelete(group)} disabled={deleteMut.isPending} title="Убрать чат" className="cursor-pointer disabled:opacity-50" style={{ color: 'var(--color-danger)' }}>
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export default function DatabasePage() {
@@ -1076,6 +1233,7 @@ export default function DatabasePage() {
       {tab === 'users' && <UsersTab />}
       {tab === 'clients' && <ClientsTab />}
       {tab === 'suppliers' && <SuppliersTab />}
+      {tab === 'telegram' && <TelegramGroupsTab />}
       {tab === 'notifications' && <NotificationsTab />}
       {tab === 'action-log' && <ActionLogTab />}
       {tab === 'health' && <SystemHealthTab />}
