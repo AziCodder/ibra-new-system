@@ -16,6 +16,7 @@ from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
 from app.schemas.payment import PaymentCreate, PaymentOut
 from app.schemas.payment_request import PaymentRequestItemOut, PaymentRequestSummaryOut
+from app.services.payment_notifications import notify_payment_recorded
 from app.services.payment_remaining import get_payment_request_paid
 
 router = APIRouter(prefix="/api/payment-requests", tags=["payment_requests_global"])
@@ -149,6 +150,7 @@ async def add_payment_global(
     session.add(payment)
     await session.commit()
     await session.refresh(payment)
+    await notify_payment_recorded(payment, session)
     return PaymentOut(
         id=payment.id,
         payment_request_id=payment.payment_request_id,

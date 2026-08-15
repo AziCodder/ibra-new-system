@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.models.payment_request import PaymentRequestPriority
-from app.services.notification_templates import format_amount, payment_request_message
+from app.services.notification_templates import (
+    format_amount,
+    format_rate,
+    payment_made_message,
+    payment_request_message,
+)
 
 REQUISITES = "周斯丽6217007200052740738中国建设银行股份有限公司深圳上步支行"
 
@@ -55,6 +60,48 @@ def test_hashtag_is_the_first_line():
     )
     assert message.splitlines()[0] == "#требуетсяоплата"
     assert "Приоритет: Срочно" in message
+
+
+def test_payment_made_message_matches_the_agreed_layout(monkeypatch):
+    from app.core import config
+
+    monkeypatch.setattr(config.settings, "public_base_url", "https://82.25.60.93")
+
+    message = payment_made_message(
+        request_id=97,
+        amount=Decimal("4000.00"),
+        currency="CNY",
+        exchange_rate=Decimal("12.000000"),
+        remaining_after=Decimal("10000.00"),
+        request_currency="CNY",
+        note="остаток отправим позже",
+        order_id=420,
+    )
+
+    assert message == (
+        "#прошлаоплата\n"
+        "\n"
+        "Оплата по запросу #97\n"
+        "\n"
+        "Сумма: 4 000 CNY\n"
+        "Курс: 12\n"
+        "Остаток после оплаты: 10 000 CNY\n"
+        "\n"
+        "Примечание: остаток отправим позже\n"
+        "Ссылка: https://82.25.60.93/orders/420"
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (Decimal("12.000000"), "12"),
+        (Decimal("12.410000"), "12,41"),
+        (Decimal("0.080580"), "0,08058"),
+    ],
+)
+def test_rates_drop_their_trailing_zeros(value, expected):
+    assert format_rate(value) == expected
 
 
 @pytest.mark.parametrize(

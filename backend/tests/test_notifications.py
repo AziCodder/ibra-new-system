@@ -127,7 +127,7 @@ async def test_create_payment_request_calls_notify_with_client_chat_and_order_de
     client, supplier, owner, order, product = await _setup()
     try:
         async with async_session_factory() as session:
-            with patch("app.routers.payment_requests.notify") as mock_notify:
+            with patch("app.routers.payment_requests.notify_targets") as mock_notify:
                 await create_payment_request(
                     order.id,
                     PaymentRequestCreate(
@@ -140,9 +140,11 @@ async def test_create_payment_request_calls_notify_with_client_chat_and_order_de
                 )
 
             mock_notify.assert_called_once()
-            target, message, file_keys = mock_notify.call_args[0]
-            # Delivered to the client's Telegram chat id, not the human-facing t.me link.
-            assert target == "-1001234567890"
+            targets, fallback, message, file_keys = mock_notify.call_args[0]
+            # No chat is attached to this client, so it falls back to their private
+            # chat id — not the human-facing t.me link.
+            assert targets == []
+            assert fallback == "-1001234567890"
             assert message.splitlines()[0] == "#требуетсяоплата"
             assert "Итого: 20 USD" in message
             assert "Реквизиты: bank details" in message
@@ -171,7 +173,7 @@ async def test_create_payment_request_requires_group_ids_when_client_has_multipl
             await session.commit()
 
         async with async_session_factory() as session:
-            with patch("app.routers.payment_requests.notify") as mock_notify:
+            with patch("app.routers.payment_requests.notify_targets") as mock_notify:
                 with pytest.raises(HTTPException) as exc_info:
                     await create_payment_request(
                         order.id,
@@ -217,7 +219,7 @@ async def test_create_payment_request_sends_to_all_chosen_groups():
             await session.commit()
 
         async with async_session_factory() as session:
-            with patch("app.routers.payment_requests.notify") as mock_notify:
+            with patch("app.routers.payment_requests.notify_targets") as mock_notify:
                 await create_payment_request(
                     order.id,
                     PaymentRequestCreate(
@@ -228,8 +230,8 @@ async def test_create_payment_request_sends_to_all_chosen_groups():
                     owner,
                     session,
                 )
-            assert mock_notify.call_count == 2
-            targets = {call.args[0] for call in mock_notify.call_args_list}
+            mock_notify.assert_called_once()
+            targets = {t["chat_id"] for t in mock_notify.call_args[0][0]}
             assert targets == {"-100904001", "-100904002"}
     finally:
         async with async_session_factory() as session:

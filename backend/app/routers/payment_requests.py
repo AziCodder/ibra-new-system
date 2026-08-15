@@ -17,7 +17,7 @@ from app.schemas.payment_request import (
     PaymentRequestUpdate,
 )
 from app.services.notification_templates import payment_request_message
-from app.services.notifications import notify
+from app.services.notifications import notify_targets
 from app.services.order_access import get_order_for_read as _get_order_for_read
 from app.services.order_access import get_order_for_write as _get_order_for_write
 from app.services.payment_remaining import get_payment_request_paid
@@ -163,11 +163,7 @@ async def create_payment_request(
     )
     # The request's own attachments (invoice, screenshot of the requisites) go
     # with it — that is what the recipient pays against.
-    if chosen_targets:
-        for t in chosen_targets:
-            notify(t["chat_id"], message, request.file_keys)
-    else:
-        notify(client.telegram_chat_id, message, request.file_keys)
+    notify_targets(chosen_targets, client.telegram_chat_id, message, request.file_keys)
 
     return out
 

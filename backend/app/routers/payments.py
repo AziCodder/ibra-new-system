@@ -11,6 +11,7 @@ from app.models.user import User
 from app.routers.auth import get_current_user
 from app.schemas.payment import PaymentCreate, PaymentOut, PaymentUpdate
 from app.services.order_access import get_order_for_read as _get_order_for_read
+from app.services.payment_notifications import notify_payment_recorded
 from app.services.order_access import get_order_for_write as _get_order_for_write
 from app.services.payment_remaining import get_payment_request_remaining, get_payment_request_remaining_excluding
 
@@ -106,6 +107,7 @@ async def create_payment(
     session.add(payment)
     await session.commit()
     await session.refresh(payment)
+    await notify_payment_recorded(payment, session)
     return _to_payment_out(payment, user.full_name)
 
 

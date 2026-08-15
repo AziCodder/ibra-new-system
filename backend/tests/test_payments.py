@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
@@ -118,6 +119,35 @@ async def test_partial_payments_decrease_remaining():
         async with async_session_factory() as session:
             payments = await list_payments(order.id, request.id, owner, session)
             assert len(payments) == 2
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id])
+
+
+@pytest.mark.asyncio
+async def test_recording_a_payment_notifies_the_client_with_the_receipt():
+    """Every payment is announced, with the attached receipt and the new remainder."""
+    client, supplier, owner, other, observer, order, product, request = await _setup()
+    try:
+        async with async_session_factory() as session:
+            with patch("app.services.payment_notifications.notify_targets") as mock_notify:
+                await create_payment(
+                    order.id,
+                    request.id,
+                    PaymentCreate(
+                        amount=Decimal("20.00"), currency="USD", exchange_rate=Decimal("1"),
+                        file_key="receipt.pdf", note="первый транш",
+                    ),
+                    owner,
+                    session,
+                )
+
+            mock_notify.assert_called_once()
+            _targets, _fallback, message, file_keys = mock_notify.call_args[0]
+            assert message.splitlines()[0] == "#прошлаоплата"
+            assert "Сумма: 20 USD" in message
+            assert "Остаток после оплаты: 30 USD" in message  # 50 requested − 20 paid
+            assert "Примечание: первый транш" in message
+            assert file_keys == ["receipt.pdf"]
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id])
 

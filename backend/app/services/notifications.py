@@ -82,6 +82,24 @@ async def _deliver_and_log(target: str, message: str, file_keys: list[str] | Non
         await _deliver_files(target, file_keys)
 
 
+def notify_targets(
+    targets: list[dict],
+    fallback_chat_id: str,
+    message: str,
+    file_keys: list[str] | None = None,
+) -> None:
+    """Send to every chat the client is served by, or to their private chat.
+
+    `targets` comes from get_client_send_targets; an empty list means the admin
+    has not attached any chat to this client, and the private chat is all there is.
+    """
+    if targets:
+        for target in targets:
+            notify(target["chat_id"], message, file_keys)
+        return
+    notify(fallback_chat_id, message, file_keys)
+
+
 def notify(target: str, message: str, file_keys: list[str] | None = None) -> None:
     """Fire-and-forget notification entry point (single integration point).
 
