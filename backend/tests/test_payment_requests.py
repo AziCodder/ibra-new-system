@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from app.core.database import async_session_factory
 from app.models.client import Client
@@ -211,6 +211,43 @@ async def test_delete_product_blocked_when_referenced_by_payment_request_item():
             with pytest.raises(HTTPException) as exc_info:
                 await delete_product(order.id, product.id, admin, session)
             assert exc_info.value.status_code == 409
+    finally:
+        await _cleanup(client.id, supplier.id)
+
+
+@pytest.mark.asyncio
+async def test_all_payment_requests_hides_requests_of_cancelled_orders():
+    """A cancelled order will never be paid, so its requests drop off the payments page."""
+    client, supplier, admin, order, product = await _setup()
+    try:
+        async with async_session_factory() as session:
+            request = PaymentRequest(order_id=order.id, created_by_id=admin.id)
+            session.add(request)
+            await session.commit()
+            await session.refresh(request)
+
+            session.add(PaymentRequestItem(payment_request_id=request.id, product_id=product.id, amount=Decimal("25.00")))
+            await session.commit()
+
+        async with async_session_factory() as session:
+            visible = await list_all_payment_requests(
+                manager_id=None, client_id=None, search=None, sort="desc",
+                remaining="all", user=admin, session=session,
+            )
+            assert request.id in {r.id for r in visible}
+
+        async with async_session_factory() as session:
+            await session.execute(
+                update(Order).where(Order.id == order.id).values(status=OrderStatus.cancelled)
+            )
+            await session.commit()
+
+        async with async_session_factory() as session:
+            visible = await list_all_payment_requests(
+                manager_id=None, client_id=None, search=None, sort="desc",
+                remaining="all", user=admin, session=session,
+            )
+            assert request.id not in {r.id for r in visible}
     finally:
         await _cleanup(client.id, supplier.id)
 

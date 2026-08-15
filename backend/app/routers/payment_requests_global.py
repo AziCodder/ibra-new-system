@@ -8,7 +8,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.database import get_session
 from app.models.client import Client
-from app.models.order import Order
+from app.models.order import Order, OrderStatus
 from app.models.payment import Payment
 from app.models.payment_request import PaymentRequest, PaymentRequestItem
 from app.models.product import Product
@@ -88,6 +88,9 @@ async def list_all_payment_requests(
         .join(Order, PaymentRequest.order_id == Order.id)
         .join(Client, Order.client_id == Client.id)
         .join(ManagerUser, Order.manager_id == ManagerUser.id)
+        # A cancelled order is never going to be paid, so its requests are noise
+        # on this page. They stay visible inside the order itself.
+        .where(Order.status != OrderStatus.cancelled)
     )
 
     if user.role == UserRole.manager:
