@@ -5,6 +5,19 @@
 }
 
 :root[data-theme="dark"] {
+  /* App shell (left menu). Declared in both theme blocks rather than once on a
+     bare :root — a token that only some themes redefine leaves inline
+     `var(--sidebar-*)` styles showing the previous theme's colour until reload. */
+  --sidebar-bg: #12141c;
+  --sidebar-border: #1f222f;
+  --sidebar-text: #e7e8f3;
+  --sidebar-muted: #9295ab;
+  --sidebar-faint: #5f6274;
+  --sidebar-active-bg: #6c63ff;
+  --sidebar-active-text: #ffffff;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
+  --sidebar-avatar-bg: #6c63ff;
+
   /* colorBgLayout / colorBgContainer / colorBgElevated / colorBgSpotlight */
   --color-bg: #0f1115;
   --color-sidebar: #1a1d23;
@@ -63,6 +76,18 @@
 }
 
 :root[data-theme="light"] {
+  /* Grey shell, a shade darker than --color-bg, so the menu still reads as its
+     own panel. Hover is a dark wash — the dark theme's white one is invisible here. */
+  --sidebar-bg: #e3e7ee;
+  --sidebar-border: #d3d8e1;
+  --sidebar-text: #1f2937;
+  --sidebar-muted: #6b7280;
+  --sidebar-faint: #9ca3af;
+  --sidebar-active-bg: #4a6dea;
+  --sidebar-active-text: #ffffff;
+  --sidebar-hover-bg: rgba(15, 23, 42, 0.06);
+  --sidebar-avatar-bg: #4a6dea;
+
   /* colorBgLayout / colorBgContainer / colorBgElevated / colorBgSpotlight */
   --color-bg: #eef1f5;
   --color-sidebar: #ffffff;
@@ -127,17 +152,20 @@
   --radius-lg: 10px;
 }
 
-/* Sidebar tokens — constant, NOT switched by data-theme (always-dark app shell) */
-:root {
-  --sidebar-bg: #12141c;
-  --sidebar-border: #1f222f;
-  --sidebar-text: #e7e8f3;
-  --sidebar-muted: #9295ab;
-  --sidebar-faint: #5f6274;
-  --sidebar-active-bg: #6c63ff;
-  --sidebar-active-text: #ffffff;
-  --sidebar-hover-bg: rgba(255, 255, 255, 0.06);
-  --sidebar-avatar-bg: #6c63ff;
+
+/* Menu items are coloured by class rather than by react-router's inline style
+   callback, so the active state is plain CSS. Keep them free of colour
+   transitions — see the note in Layout.tsx. */
+.sidebar-link {
+  border-radius: 10px;
+  padding: 9px 12px;
+  color: var(--sidebar-text);
+}
+
+.sidebar-link.is-active {
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text);
+  font-weight: 600;
 }
 
 body {

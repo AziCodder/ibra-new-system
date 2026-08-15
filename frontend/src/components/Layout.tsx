@@ -106,14 +106,13 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               to={item.to}
               end={item.to === '/'}
               onClick={onClose}
-              className="flex items-center gap-2.5 text-sm transition-colors"
-              style={({ isActive }) => ({
-                background: isActive ? 'var(--sidebar-active-bg)' : 'transparent',
-                color: isActive ? 'var(--sidebar-active-text)' : 'var(--sidebar-text)',
-                borderRadius: 10,
-                padding: '9px 12px',
-                fontWeight: isActive ? 600 : 400,
-              })}
+              // No transition-colors here: a colour transition freezes these
+              // links on the previous theme's palette when data-theme flips
+              // (Chrome keeps the old computed colour until the element is
+              // recreated), which left the menu unreadable until a reload.
+              className={({ isActive }) =>
+                `sidebar-link flex items-center gap-2.5 text-sm${isActive ? ' is-active' : ''}`
+              }
             >
               <item.icon size={16} />
               {item.label}
