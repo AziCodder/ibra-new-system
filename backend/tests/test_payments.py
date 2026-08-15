@@ -127,18 +127,18 @@ async def test_payment_in_different_currency_converted_via_exchange_rate():
     client, supplier, owner, other, observer, order, product, request = await _setup()
     try:
         async with async_session_factory() as session:
-            # 140 CNY at "1 USD = 7 CNY" = 20 USD applied toward a USD-denominated request
+            # 140 CNY at "1 CNY = 0.142857 USD" ≈ 20 USD applied toward a USD-denominated request
             await create_payment(
                 order.id,
                 request.id,
-                PaymentCreate(amount=Decimal("140.00"), currency="CNY", exchange_rate=Decimal("7.000000")),
+                PaymentCreate(amount=Decimal("140.00"), currency="CNY", exchange_rate=Decimal("0.142857")),
                 owner,
                 session,
             )
 
         async with async_session_factory() as session:
             fetched = await get_payment_request(order.id, request.id, owner, session)
-            assert fetched.paid_amount == Decimal("140.00") / Decimal("7.000000")
+            assert fetched.paid_amount == Decimal("140.00") * Decimal("0.142857")
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id])
 

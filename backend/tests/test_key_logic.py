@@ -88,10 +88,9 @@ async def test_manager_sees_only_own_orders_in_list():
 async def test_profit_calculation_tz_example():
     """ТЗ §11 example 1: income − purchases − logistics − expenses = profit (74k RUB).
 
-    Rates are stored as "operation currency per 1 order-currency unit" and convert
-    by division, so 1 RUB = 0.01 USD (100 RUB per dollar) and 1 RUB = 0.1 CNY
-    (10 RUB per yuan). The ТЗ's own quotes have no exact 6-decimal inverse, so the
-    foreign amounts are picked to land on the totals the ТЗ example asserts.
+    Rates are stored as "order currency per 1 operation-currency unit" and convert
+    by multiplication, so 1 USD = 100 RUB and 1 CNY = 10 RUB. The ТЗ's own quotes
+    would not land on the round totals, so the foreign amounts are picked to.
     """
     async with async_session_factory() as session:
         client = Client(code="KEYPRF", full_name="Key Profit Client")
@@ -112,11 +111,11 @@ async def test_profit_calculation_tz_example():
             LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
                         amount=Decimal("200000.00"), currency="RUB", exchange_rate=Decimal("1.000000")),
             LedgerEntry(order_id=order.id, author_id=mgr.id, type=LedgerEntryType.income,
-                        amount=Decimal("450.00"), currency="USD", exchange_rate=Decimal("0.010000")),
+                        amount=Decimal("450.00"), currency="USD", exchange_rate=Decimal("100.000000")),
         ])
         product = Product(order_id=order.id, supplier_id=sup.id, name="Goods",
                           quantity=Decimal("100.000"), price=Decimal("121.00"), currency="CNY",
-                          exchange_rate=Decimal("0.100000"))
+                          exchange_rate=Decimal("10.000000"))
         session.add(product)
         await session.commit()
         await session.refresh(product)

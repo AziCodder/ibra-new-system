@@ -34,7 +34,7 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
       quantity: existing.quantity + quantity,
       sum: existing.sum + sum,
     })
-    grandTotalInOrderCurrency += sum / Number(product.exchange_rate || 1)
+    grandTotalInOrderCurrency += sum * Number(product.exchange_rate || 1)
   }
   const hasForeignCurrency = [...totalsByCurrency.keys()].some((c) => c !== orderCurrency)
 

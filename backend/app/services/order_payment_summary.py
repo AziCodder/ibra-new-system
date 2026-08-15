@@ -12,8 +12,8 @@ async def get_orders_payment_totals(
 ) -> dict[int, tuple[Decimal, Decimal]]:
     """Requested (sum of payment request items) and paid (sum of payments, converted) per order.
 
-    Payments convert into the request's currency via `amount / exchange_rate` —
-    the rate is stored as "payment-currency units per 1 request-currency unit".
+    Payments convert into the request's currency via `amount * exchange_rate` —
+    the rate is stored as "request-currency units per 1 payment-currency unit".
 
     An order with no payment requests at all is omitted from the result — callers should
     treat a missing key as "no payment request yet" rather than "fully paid".
@@ -32,7 +32,7 @@ async def get_orders_payment_totals(
 
     paid_rows = (
         await session.execute(
-            select(PaymentRequest.order_id, func.sum(Payment.amount / Payment.exchange_rate))
+            select(PaymentRequest.order_id, func.sum(Payment.amount * Payment.exchange_rate))
             .join(Payment, Payment.payment_request_id == PaymentRequest.id)
             .where(PaymentRequest.order_id.in_(order_ids))
             .group_by(PaymentRequest.order_id)

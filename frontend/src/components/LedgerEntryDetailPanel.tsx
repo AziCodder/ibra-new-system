@@ -91,7 +91,7 @@ export default function LedgerEntryDetailPanel({
             label="Курс"
             value={entry.currency === orderCurrency
               ? String(entry.exchange_rate)
-              : `1 ${orderCurrency} = ${entry.exchange_rate} ${entry.currency}`}
+              : `1 ${entry.currency} = ${entry.exchange_rate} ${orderCurrency}`}
           />
           <SummaryRow label="Автор" value={entry.author_name} />
           <SummaryRow label="Дата" value={formatDate(entry.created_at)} />

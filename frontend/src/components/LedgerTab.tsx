@@ -130,7 +130,7 @@ export default function LedgerTab({
                     <td className="px-4 py-2.5 text-right" data-label="Курс" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {entry.currency === orderCurrency
                         ? entry.exchange_rate
-                        : `1 ${orderCurrency} = ${entry.exchange_rate} ${entry.currency}`}
+                        : `1 ${entry.currency} = ${entry.exchange_rate} ${orderCurrency}`}
                     </td>
                     <td className="px-4 py-2.5 text-right" data-label="Дата" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
                       {formatDate(entry.created_at)}

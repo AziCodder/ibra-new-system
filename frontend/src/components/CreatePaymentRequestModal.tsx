@@ -168,8 +168,8 @@ export default function CreatePaymentRequestModal({
                   {selected[product.id] && (
                     <input
                       type="number"
-                      min="0.000001"
-                      step="any"
+                      min="0"
+                      step="1"
                       value={amounts[product.id] ?? ''}
                       onChange={(e) => setAmounts((prev) => ({ ...prev, [product.id]: e.target.value }))}
                       className="w-24 rounded-lg px-2 py-1 text-sm text-right outline-none"
@@ -196,11 +196,13 @@ export default function CreatePaymentRequestModal({
 
         <label className="block mb-4">
           <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Реквизиты</span>
-          <input
-            type="text"
+          {/* A textarea, not an input: bank details are long unbroken strings that
+              a single-line field scrolls sideways and never lets you read back. */}
+          <textarea
             value={requisites}
             onChange={(e) => setRequisites(e.target.value)}
-            className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+            rows={2}
+            className="w-full rounded-lg px-3 py-2.5 text-sm outline-none resize-none break-all"
             style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
           />
         </label>

@@ -185,10 +185,10 @@ export default function ProductDetailPanel({
               <SummaryRow label="Итого" value={`${formatNumber(total)} ${product.currency}`} />
               {isForeignCurrency && (
                 <>
-                  <SummaryRow label="Курс" value={`1 ${orderCurrency} = ${rateNum} ${product.currency}`} />
+                  <SummaryRow label="Курс" value={`1 ${product.currency} = ${rateNum} ${orderCurrency}`} />
                   <SummaryRow
                     label={`Итого в ${orderCurrency}`}
-                    value={`${formatNumber(total / rateNum)} ${orderCurrency}`}
+                    value={`${formatNumber(total * rateNum)} ${orderCurrency}`}
                   />
                 </>
               )}
@@ -285,8 +285,8 @@ export default function ProductDetailPanel({
                 <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Количество</span>
                 <input
                   type="number"
-                  min="0.000001"
-                  step="any"
+                  min="0"
+                  step="1"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                   className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
@@ -299,7 +299,7 @@ export default function ProductDetailPanel({
                 <input
                   type="number"
                   min="0"
-                  step="any"
+                  step="0.1"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"

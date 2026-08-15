@@ -23,9 +23,9 @@ class ProductCreate(BaseModel):
     price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
     # Defaults to the order's currency when omitted (see create_product).
     currency: Currency | None = None
-    # Units of `currency` per 1 unit of the order's currency ("1 CNY = 11.5 RUB"
-    # -> 11.5). Required when the two currencies differ; must be 1 (or omitted)
-    # when they match.
+    # Units of the order's currency per 1 unit of `currency` — a CNY product in a
+    # RUB order reads "1 CNY = 11.5 RUB" -> 11.5. Required when the two currencies
+    # differ; must be 1 (or omitted) when they match.
     exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=6)
     photo_key: str | None = None
 
@@ -70,7 +70,7 @@ class ProductOut(BaseModel):
     quantity: Decimal
     price: Decimal
     currency: Currency
-    # Units of `currency` per 1 unit of the order's currency (divide to convert);
+    # Units of the order's currency per 1 unit of `currency` (multiply to convert);
     # 1 whenever the product is priced in the order's currency.
     exchange_rate: Decimal
     photo_key: str | None

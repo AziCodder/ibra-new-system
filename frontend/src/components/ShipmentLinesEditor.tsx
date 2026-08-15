@@ -134,8 +134,8 @@ export default function ShipmentLinesEditor({
 
               <input
                 type="number"
-                min="0.000001"
-                step="any"
+                min="0"
+                step="1"
                 placeholder="Кол-во"
                 value={line.quantity}
                 onChange={(e) => update(index, { quantity: e.target.value })}

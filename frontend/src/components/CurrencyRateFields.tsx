@@ -13,9 +13,9 @@ const inputStyle = {
 /**
  * Currency picker for a product, plus the rate to the order's currency.
  *
- * The rate is quoted from the order's currency outwards — "1 CNY = ? RUB" — so
- * the number entered is how many product-currency units one order-currency unit
- * buys, and converting back into the order's currency divides by it.
+ * The rate is quoted from the product's currency inwards — "1 CNY = ? RUB" — so
+ * the number entered is how many order-currency units one product-currency unit
+ * buys, and converting into the order's currency multiplies by it.
  *
  * The rate field only appears when the two currencies differ — in the order's own
  * currency the rate is always 1 and the backend rejects anything else, so showing
@@ -66,12 +66,12 @@ export default function CurrencyRateFields({
       {isForeign && (
         <label className="block mb-4">
           <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
-            Курс: 1 {orderCurrency} = ? {currency}
+            Курс: 1 {currency} = ? {orderCurrency}
           </span>
           <input
             type="number"
-            min="0.000001"
-            step="any"
+            min="0"
+            step="0.01"
             value={exchangeRate}
             onChange={(e) => onExchangeRateChange(e.target.value)}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
@@ -82,7 +82,7 @@ export default function CurrencyRateFields({
           />
           <span className="block text-xs mt-1.5" style={{ color: 'var(--color-muted)' }}>
             {showPreview
-              ? `${formatNumber(amount)} ${currency} ≈ ${formatNumber(amount / rate)} ${orderCurrency}`
+              ? `${formatNumber(amount)} ${currency} ≈ ${formatNumber(amount * rate)} ${orderCurrency}`
               : `Валюта товара отличается от валюты заказа (${orderCurrency}) — курс обязателен.`}
           </span>
         </label>

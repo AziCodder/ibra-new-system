@@ -74,8 +74,8 @@ export default function CreateLedgerEntryModal({
             <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Сумма</span>
             <input
               type="number"
-              min="0.000001"
-              step="any"
+              min="0"
+              step="1"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
@@ -102,12 +102,12 @@ export default function CreateLedgerEntryModal({
 
         <label className="block mb-4">
           <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
-            {currency === orderCurrency ? 'Курс (вручную)' : `Курс: 1 ${orderCurrency} = ? ${currency}`}
+            {currency === orderCurrency ? 'Курс (вручную)' : `Курс: 1 ${currency} = ? ${orderCurrency}`}
           </span>
           <input
             type="number"
-            min="0.000001"
-            step="any"
+            min="0"
+            step="0.01"
             value={exchangeRate}
             onChange={(e) => setExchangeRate(e.target.value)}
             className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
@@ -116,7 +116,7 @@ export default function CreateLedgerEntryModal({
           {currency !== orderCurrency && (
             <span className="block text-xs mt-1.5" style={{ color: 'var(--color-muted)' }}>
               {Number(amount) > 0 && Number(exchangeRate) > 0
-                ? `${formatNumber(Number(amount))} ${currency} ≈ ${formatNumber(Number(amount) / Number(exchangeRate))} ${orderCurrency}`
+                ? `${formatNumber(Number(amount))} ${currency} ≈ ${formatNumber(Number(amount) * Number(exchangeRate))} ${orderCurrency}`
                 : `Валюта отличается от валюты заказа (${orderCurrency}) — курс обязателен.`}
             </span>
           )}

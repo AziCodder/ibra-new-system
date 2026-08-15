@@ -18,9 +18,9 @@ class Product(Base):
     quantity: Mapped[Decimal] = mapped_column(Numeric(14, 3))
     price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     currency: Mapped[str] = mapped_column(String(10), default="USD")
-    # Units of `currency` per 1 unit of the order's currency — the direction the
-    # form asks for ("1 CNY = 11.5 RUB" -> 11.5), so converting divides. Always 1
-    # when the product is priced in its order's currency; set explicitly when it
+    # Units of the order's currency per 1 unit of `currency` — the direction the
+    # form asks for ("1 CNY = 11.5 RUB" -> 11.5), so converting multiplies. Always
+    # 1 when the product is priced in its order's currency; set explicitly when it
     # isn't, so purchases can be valued in the order's currency (profit.py).
     exchange_rate: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=Decimal("1"))
     photo_key: Mapped[str | None] = mapped_column(String(255), default=None)

@@ -221,8 +221,8 @@ export default function PaymentRequestDetailPanel({
                 <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Сумма</span>
                 <input
                   type="number"
-                  min="0.000001"
-                  step="any"
+                  min="0"
+                  step="1"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
@@ -246,9 +246,9 @@ export default function PaymentRequestDetailPanel({
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Курс (вручную)</span>
               <input
                 type="number"
-                min="0.000001"
-                step="any"
-                placeholder={currency !== request.currency ? `1 ${request.currency} = ? ${currency}` : undefined}
+                min="0"
+                step="0.01"
+                placeholder={currency !== request.currency ? `1 ${currency} = ? ${request.currency}` : undefined}
                 value={exchangeRate}
                 onChange={(e) => setExchangeRate(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
@@ -337,7 +337,7 @@ export default function PaymentRequestDetailPanel({
                     {new Date(p.paid_at).toLocaleDateString('ru-RU')}
                     {p.currency === request.currency
                       ? ` · курс ${p.exchange_rate}`
-                      : ` · курс 1 ${request.currency} = ${p.exchange_rate} ${p.currency}`}
+                      : ` · курс 1 ${p.currency} = ${p.exchange_rate} ${request.currency}`}
                     {p.note ? ` · ${p.note}` : ''}
                   </div>
                 </li>

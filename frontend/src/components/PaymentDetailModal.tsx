@@ -90,9 +90,9 @@ export default function PaymentDetailModal({
   }
 
   const canSave = Number(amount) > 0 && Number(exchangeRate) > 0 && paidAt !== ''
-  // The rate is quoted from the request's currency outwards ("1 CNY = ? RUB"),
-  // so converting a payment back into it divides.
-  const converted = Number(amount) / (Number(exchangeRate) || 1)
+  // The rate is quoted from the payment's currency inwards ("1 CNY = ? RUB"),
+  // so converting a payment into the request's currency multiplies.
+  const converted = Number(amount) * (Number(exchangeRate) || 1)
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
@@ -123,7 +123,7 @@ export default function PaymentDetailModal({
                 label="Курс"
                 value={payment.currency === request.currency
                   ? String(payment.exchange_rate)
-                  : `1 ${request.currency} = ${payment.exchange_rate} ${payment.currency}`}
+                  : `1 ${payment.currency} = ${payment.exchange_rate} ${request.currency}`}
               />
               {payment.currency !== request.currency && (
                 <Row label="В валюте запроса" value={`${formatNumber(converted)} ${request.currency}`} />
@@ -170,8 +170,8 @@ export default function PaymentDetailModal({
                 <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Сумма</span>
                 <input
                   type="number"
-                  min="0.000001"
-                  step="any"
+                  min="0"
+                  step="1"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
@@ -195,9 +195,9 @@ export default function PaymentDetailModal({
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Курс (вручную)</span>
               <input
                 type="number"
-                min="0.000001"
-                step="any"
-                placeholder={currency !== request.currency ? `1 ${request.currency} = ? ${currency}` : undefined}
+                min="0"
+                step="0.01"
+                placeholder={currency !== request.currency ? `1 ${currency} = ? ${request.currency}` : undefined}
                 value={exchangeRate}
                 onChange={(e) => setExchangeRate(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"

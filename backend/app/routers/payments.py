@@ -86,7 +86,7 @@ async def create_payment(
     await _get_payment_request_or_404(order_id, request_id, session)
 
     remaining = await get_payment_request_remaining(session, request_id)
-    converted_amount = body.amount / body.exchange_rate
+    converted_amount = body.amount * body.exchange_rate
     if converted_amount > remaining:
         raise HTTPException(
             status_code=422,
@@ -123,7 +123,7 @@ async def update_payment(
     payment = await _get_payment_or_404(request_id, payment_id, session)
 
     remaining = await get_payment_request_remaining_excluding(session, request_id, payment_id)
-    converted_amount = body.amount / body.exchange_rate
+    converted_amount = body.amount * body.exchange_rate
     if converted_amount > remaining:
         raise HTTPException(
             status_code=422,

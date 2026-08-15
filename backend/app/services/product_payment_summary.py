@@ -54,7 +54,7 @@ async def get_products_payment_totals(
     request_paid_by_id = dict(
         (
             await session.execute(
-                select(Payment.payment_request_id, func.sum(Payment.amount / Payment.exchange_rate))
+                select(Payment.payment_request_id, func.sum(Payment.amount * Payment.exchange_rate))
                 .where(Payment.payment_request_id.in_(request_ids))
                 .group_by(Payment.payment_request_id)
             )
