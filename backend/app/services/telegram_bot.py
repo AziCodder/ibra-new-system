@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 
 from aiogram import Bot, Dispatcher, F
@@ -176,10 +177,10 @@ async def stop_polling() -> None:
     global _polling_task
     if _polling_task is not None and not _polling_task.done():
         _polling_task.cancel()
-        try:
+        # Cancelling is how polling is meant to end, so its CancelledError is
+        # the expected outcome here, not a failure.
+        with contextlib.suppress(asyncio.CancelledError):
             await _polling_task
-        except asyncio.CancelledError:
-            pass
         _polling_task = None
     logger.info("Telegram bot polling stopped")
 

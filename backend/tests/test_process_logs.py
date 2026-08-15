@@ -1,3 +1,4 @@
+import pytest
 from fastapi import HTTPException
 
 from app.core.config import settings
@@ -169,13 +170,11 @@ async def test_logs_truncated_flag_set_when_tail_reached(monkeypatch):
 
 async def test_logs_unknown_source_404(monkeypatch):
     _fake_docker(monkeypatch)
-    try:
+    with pytest.raises(HTTPException) as exc_info:
         await get_process_logs(  # type: ignore[arg-type]
             source="ghost", since=None, until=None, level=None, q=None, tail=500, _admin=None,
         )
-        assert False, "expected HTTPException"
-    except HTTPException as exc:
-        assert exc.status_code == 404
+    assert exc_info.value.status_code == 404
 
 
 # ──────────────────────────────────────────────────────────────── деградация
@@ -189,13 +188,11 @@ async def test_sources_graceful_when_disabled(monkeypatch):
 
 async def test_logs_503_when_disabled(monkeypatch):
     monkeypatch.setattr(settings, "logs_viewer_enabled", False)
-    try:
+    with pytest.raises(HTTPException) as exc_info:
         await get_process_logs(  # type: ignore[arg-type]
             source="backend", since=None, until=None, level=None, q=None, tail=500, _admin=None,
         )
-        assert False, "expected HTTPException"
-    except HTTPException as exc:
-        assert exc.status_code == 503
+    assert exc_info.value.status_code == 503
 
 
 class _BrokenContainers:
@@ -219,10 +216,8 @@ async def test_sources_graceful_when_proxy_down(monkeypatch):
 
 async def test_logs_503_when_proxy_down(monkeypatch):
     monkeypatch.setattr(docker_logs, "_client", lambda: _BrokenClient())
-    try:
+    with pytest.raises(HTTPException) as exc_info:
         await get_process_logs(  # type: ignore[arg-type]
             source="backend", since=None, until=None, level=None, q=None, tail=500, _admin=None,
         )
-        assert False, "expected HTTPException"
-    except HTTPException as exc:
-        assert exc.status_code == 503
+    assert exc_info.value.status_code == 503

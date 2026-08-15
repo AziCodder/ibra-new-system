@@ -863,7 +863,7 @@ function toIso(local: string): string | undefined {
 }
 
 function ProcessLogsTab() {
-  const [source, setSource] = useState('')
+  const [sourceChoice, setSourceChoice] = useState('')
   const [since, setSince] = useState('')
   const [until, setUntil] = useState('')
   const [tail, setTail] = useState(500)
@@ -876,12 +876,13 @@ function ProcessLogsTab() {
 
   const { data: sourcesRes } = useQuery({ queryKey: ['log-sources'], queryFn: fetchLogSources })
 
-  useEffect(() => {
-    if (!source && sourcesRes?.available && sourcesRes.items.length > 0) {
-      const backend = sourcesRes.items.find((s: LogSource) => s.name === 'backend')
-      setSource(backend?.name ?? sourcesRes.items[0].name)
-    }
-  }, [sourcesRes, source])
+  // Until something is picked, show the backend's own stream — that is what an
+  // admin opens this tab for. Derived while rendering rather than written into
+  // state from an effect, so the picker never paints an empty value first.
+  const defaultSource = sourcesRes?.available
+    ? sourcesRes.items.find((s: LogSource) => s.name === 'backend')?.name ?? sourcesRes.items[0]?.name ?? ''
+    : ''
+  const source = sourceChoice || defaultSource
 
   const { data: logsRes, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['process-logs', source, since, until, tail, q, levels],
@@ -938,7 +939,7 @@ function ProcessLogsTab() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="block">
             <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--color-faint)' }}>Источник</span>
-            <select value={source} onChange={(e) => setSource(e.target.value)} className="block mt-1 rounded-lg px-3 py-2 text-sm outline-none min-w-[200px]" style={INPUT_STYLE}>
+            <select value={source} onChange={(e) => setSourceChoice(e.target.value)} className="block mt-1 rounded-lg px-3 py-2 text-sm outline-none min-w-[200px]" style={INPUT_STYLE}>
               {sourcesRes.items.map((s) => (
                 <option key={s.container} value={s.name}>{s.name} — {s.state}</option>
               ))}

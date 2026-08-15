@@ -5,17 +5,17 @@ Revises: 2e2ec9c6f878
 Create Date: 2026-06-30 20:10:42.641131
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '489cc621f268'
-down_revision: Union[str, Sequence[str], None] = '2e2ec9c6f878'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = '2e2ec9c6f878'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

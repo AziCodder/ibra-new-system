@@ -6,7 +6,7 @@ All amounts converted to order currency via: value = amount * exchange_rate
 i.e. exactly what the forms ask for: "1 CNY = 11.5 RUB" -> 11.5).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -23,10 +23,10 @@ from app.models.payment_request import PaymentRequest, PaymentRequestItem
 from app.models.product import Product
 from app.models.supplier import Supplier
 from app.models.user import User, UserRole
-from app.services.profit import ProfitBreakdown, calculate_profit
+from app.services.profit import calculate_profit
 from tests.helpers import add_shipment
 
-_NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 async def _cleanup(client_code: str, user_logins: list[str]) -> None:

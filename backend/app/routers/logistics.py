@@ -210,7 +210,7 @@ async def create_logistics(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(status_code=409, detail="Tracking number already exists in the system")
+        raise HTTPException(status_code=409, detail="Tracking number already exists in the system") from None
     await session.refresh(logistics)
     await notify_shipment_sent(logistics, session)
     return await _to_logistics_out(logistics, session)
@@ -257,7 +257,7 @@ async def update_logistics(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(status_code=409, detail="Tracking number already exists in the system")
+        raise HTTPException(status_code=409, detail="Tracking number already exists in the system") from None
     await session.refresh(logistics)
     return await _to_logistics_out(logistics, session)
 

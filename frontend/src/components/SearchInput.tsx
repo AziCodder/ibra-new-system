@@ -15,8 +15,16 @@ export default function SearchInput({
   className?: string
 }) {
   const [local, setLocal] = useState(value)
+  const [lastValue, setLastValue] = useState(value)
 
-  useEffect(() => setLocal(value), [value])
+  // The field keeps its own copy so typing stays instant while the debounce runs.
+  // When the parent changes `value` on its own (a filter reset, say), that copy
+  // is re-synced here during render — an effect would do it a paint too late,
+  // showing the old text for a frame.
+  if (value !== lastValue) {
+    setLastValue(value)
+    setLocal(value)
+  }
 
   useEffect(() => {
     if (local === value) return

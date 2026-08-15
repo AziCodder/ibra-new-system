@@ -41,9 +41,9 @@ async def get_process_logs(
             source, since=since, until=until, tail=tail, search=q, levels=level,
         )
     except docker_logs.UnknownSource:
-        raise HTTPException(status_code=404, detail="Неизвестный источник логов")
+        raise HTTPException(status_code=404, detail="Неизвестный источник логов") from None
     except docker_logs.LogsUnavailable as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
     return {
         "source": source,

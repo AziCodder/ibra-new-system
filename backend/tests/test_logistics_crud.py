@@ -918,9 +918,11 @@ async def test_notify_received_returns_409_with_available_groups_when_ambiguous(
             await session.commit()
 
         async with async_session_factory() as session:
-            with patch("app.routers.logistics.notify") as mock_notify:
-                with pytest.raises(HTTPException) as exc_info:
-                    await notify_logistics_received(order.id, created.id, None, owner, session)
+            with (
+                patch("app.routers.logistics.notify") as mock_notify,
+                pytest.raises(HTTPException) as exc_info,
+            ):
+                await notify_logistics_received(order.id, created.id, None, owner, session)
             mock_notify.assert_not_called()
             assert exc_info.value.status_code == 409
             available_ids = {g["group_id"] for g in exc_info.value.detail["available_groups"]}

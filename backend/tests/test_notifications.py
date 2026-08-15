@@ -173,17 +173,19 @@ async def test_create_payment_request_requires_group_ids_when_client_has_multipl
             await session.commit()
 
         async with async_session_factory() as session:
-            with patch("app.routers.payment_requests.notify_targets") as mock_notify:
-                with pytest.raises(HTTPException) as exc_info:
-                    await create_payment_request(
-                        order.id,
-                        PaymentRequestCreate(
-                            requisites="bank details",
-                            items=[PaymentRequestItemIn(product_id=product.id, amount=Decimal("20.00"))],
-                        ),
-                        owner,
-                        session,
-                    )
+            with (
+                patch("app.routers.payment_requests.notify_targets") as mock_notify,
+                pytest.raises(HTTPException) as exc_info,
+            ):
+                await create_payment_request(
+                    order.id,
+                    PaymentRequestCreate(
+                        requisites="bank details",
+                        items=[PaymentRequestItemIn(product_id=product.id, amount=Decimal("20.00"))],
+                    ),
+                    owner,
+                    session,
+                )
             assert exc_info.value.status_code == 422
             mock_notify.assert_not_called()
 

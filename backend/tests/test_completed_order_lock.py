@@ -29,7 +29,7 @@ from app.routers.payment_requests import create_payment_request
 from app.routers.payments import create_payment
 from app.routers.products import create_product
 from app.schemas.ledger_entry import LedgerEntryCreate
-from app.schemas.logistics import LogisticsAccept, LogisticsCreate, LogisticsItemIn
+from app.schemas.logistics import LogisticsCreate, LogisticsItemIn
 from app.schemas.note import NoteCreate
 from app.schemas.payment import PaymentCreate
 from app.schemas.payment_request import PaymentRequestCreate, PaymentRequestItemIn

@@ -12,7 +12,7 @@ from app.models.user import User, UserRole
 from app.routers.auth import get_current_user, require_role
 from app.schemas.client import ClientCreate, ClientOut, ClientUpdate
 from app.schemas.telegram_group import TelegramGroupOut
-from app.services.telegram_bot import TG_LINK_SALT, TG_LINK_MAX_AGE
+from app.services.telegram_bot import TG_LINK_MAX_AGE, TG_LINK_SALT
 from app.services.telegram_groups import get_client_send_targets
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])

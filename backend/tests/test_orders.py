@@ -1,6 +1,6 @@
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
 from app.core.database import async_session_factory
 from app.core.security import hash_password

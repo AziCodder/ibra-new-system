@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import re
 import socket
-from datetime import datetime, timezone
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from app.core.config import settings
 
@@ -51,7 +51,7 @@ _TS_RE = re.compile(
 )
 
 
-def _parse_ts(token: str) -> Optional[datetime]:
+def _parse_ts(token: str) -> datetime | None:
     """Разобрать префикс-метку времени Docker. None — если это не метка."""
     m = _TS_RE.match(token)
     if not m:
@@ -91,7 +91,7 @@ def parse_log_lines(raw: bytes | str) -> list[dict]:
         ts = _parse_ts(token)
         text = rest if ts is not None else line
         out.append({
-            "ts": ts.astimezone(timezone.utc).isoformat() if ts else None,
+            "ts": ts.astimezone(UTC).isoformat() if ts else None,
             "level": _detect_level(text),
             "text": text,
         })
@@ -101,8 +101,8 @@ def parse_log_lines(raw: bytes | str) -> list[dict]:
 def filter_lines(
     lines: Iterable[dict],
     *,
-    search: Optional[str] = None,
-    levels: Optional[Iterable[str]] = None,
+    search: str | None = None,
+    levels: Iterable[str] | None = None,
 ) -> list[dict]:
     """Отфильтровать строки по подстроке (без регистра) и набору уровней."""
     lvset = {lvl.upper() for lvl in levels} if levels else None
@@ -132,7 +132,7 @@ def _client():  # pragma: no cover - требует реального docker/п
         raise LogsUnavailable(f"Не удалось подключиться к docker-proxy: {e}") from e
 
 
-def _project(client) -> Optional[str]:
+def _project(client) -> str | None:
     """Имя compose-проекта для отсечения чужих контейнеров на том же хосте."""
     if settings.compose_project:
         return settings.compose_project
@@ -200,11 +200,11 @@ def list_sources(client=None) -> list[dict]:
 def read_logs(
     source: str,
     *,
-    since: Optional[datetime] = None,
-    until: Optional[datetime] = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
     tail: int = 500,
-    search: Optional[str] = None,
-    levels: Optional[Iterable[str]] = None,
+    search: str | None = None,
+    levels: Iterable[str] | None = None,
     client=None,
 ) -> list[dict]:
     """Прочитать и отфильтровать логи одного сервиса проекта.
