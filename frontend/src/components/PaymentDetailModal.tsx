@@ -5,7 +5,7 @@ import { updatePayment, deletePayment, type Payment } from '../api/payments'
 import type { PaymentRequest } from '../api/paymentRequests'
 import FileUploader, { type UploadedFile } from './FileUploader'
 
-const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
+const CURRENCIES = ['USD', 'CNY', 'RUB']
 
 function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })

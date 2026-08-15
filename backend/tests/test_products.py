@@ -280,7 +280,7 @@ async def test_cannot_change_currency_with_existing_payment_request():
 
         async with async_session_factory() as session:
             with pytest.raises(HTTPException) as exc_info:
-                await update_product(order.id, created.id, ProductUpdate(currency="EUR"), owner, session)
+                await update_product(order.id, created.id, ProductUpdate(currency="CNY"), owner, session)
             assert exc_info.value.status_code == 422
     finally:
         await _cleanup(client.id, [owner.id, other.id, observer.id], supplier.id)
@@ -312,7 +312,7 @@ async def test_create_product_rejects_currency_mismatch():
                     order.id,
                     ProductCreate(
                         supplier_id=supplier.id, name="Widget", quantity=Decimal("1"), price=Decimal("1"),
-                        currency="EUR",
+                        currency="CNY",
                     ),
                     owner,
                     session,
@@ -388,7 +388,7 @@ async def test_create_product_in_a_currency_other_than_the_orders():
                     order.id,
                     ProductCreate(
                         supplier_id=supplier.id, name="No rate", quantity=Decimal("1"), price=Decimal("1"),
-                        currency="EUR",
+                        currency="RUB",
                     ),
                     owner,
                     session,

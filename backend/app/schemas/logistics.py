@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.core.currency import Currency
+from app.core.currency import Currency, CurrencyIn
 from app.models.logistics import LogisticsStatus
 
 
@@ -34,7 +34,7 @@ class LogisticsCreate(BaseModel):
     status: LogisticsStatus = LogisticsStatus.in_transit
     received_date: datetime | None = None
     expense_amount: Decimal | None = Field(default=None, max_digits=14, decimal_places=2)
-    currency: Currency | None = None
+    currency: CurrencyIn | None = None
     exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=6)
     acceptance_note: str | None = None
 
@@ -64,7 +64,7 @@ class LogisticsUpdate(BaseModel):
 class LogisticsAccept(BaseModel):
     received_date: datetime
     expense_amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
-    currency: Currency
+    currency: CurrencyIn
     # Units of the order's currency per 1 unit of `currency` — a CNY expense in a
     # RUB order reads "1 CNY = 11.5 RUB" -> 11.5, so converting multiplies.
     # 1 when they match.

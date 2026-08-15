@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createLedgerEntry, type LedgerEntryType } from '../api/ledgerEntries'
 
-const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
+const CURRENCIES = ['USD', 'CNY', 'RUB']
 
 function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })

@@ -5,7 +5,7 @@ import { fetchPayments, createPayment, type Payment } from '../api/payments'
 import FileUploader, { type UploadedFile } from './FileUploader'
 import PaymentDetailModal from './PaymentDetailModal'
 
-const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
+const CURRENCIES = ['USD', 'CNY', 'RUB']
 
 const PRIORITY_LABELS: Record<PaymentRequestPriority, string> = {
   low: 'Низкий',

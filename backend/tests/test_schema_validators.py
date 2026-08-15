@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.ledger_entry import LedgerEntryCreate
+from app.schemas.ledger_entry import LedgerEntryCreate, LedgerEntryOut
 from app.schemas.logistics import LogisticsCreate, LogisticsItemIn
 from app.schemas.order import OrderCreate
 from app.schemas.payment import PaymentCreate
@@ -34,6 +34,31 @@ def test_ledger_entry_rejects_unknown_currency():
 def test_order_accepts_known_currency():
     created = OrderCreate(client_id=1, currency="RUB")
     assert created.currency == "RUB"
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: OrderCreate(client_id=1, currency="EUR"),
+        lambda: ProductCreate(supplier_id=1, name="Widget", quantity=Decimal("1"), price=Decimal("1"), currency="EUR"),
+        lambda: PaymentCreate(amount=Decimal("1"), currency="EUR", exchange_rate=Decimal("1")),
+        lambda: LedgerEntryCreate(type="income", amount=Decimal("1"), currency="EUR", exchange_rate=Decimal("1")),
+    ],
+)
+def test_new_records_cannot_be_created_in_eur(build):
+    """EUR was dropped from the pickers, so nothing new may be recorded in it."""
+    with pytest.raises(ValidationError):
+        build()
+
+
+def test_records_already_stored_in_eur_still_load():
+    """Output schemas keep EUR — rows written before it was dropped must stay readable."""
+    out = LedgerEntryOut(
+        id=1, order_id=1, author_id=1, author_name="Test", type="income",
+        amount=Decimal("10"), currency="EUR", exchange_rate=Decimal("1"),
+        details="", created_at=datetime.now(UTC),
+    )
+    assert out.currency == "EUR"
 
 
 def test_tracking_is_trimmed():

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.core.currency import Currency
+from app.core.currency import Currency, CurrencyIn
 from app.models.logistics import LogisticsStatus
 
 
@@ -22,7 +22,7 @@ class ProductCreate(BaseModel):
     quantity: Decimal = Field(gt=0, max_digits=14, decimal_places=3)
     price: Decimal = Field(ge=0, max_digits=14, decimal_places=2)
     # Defaults to the order's currency when omitted (see create_product).
-    currency: Currency | None = None
+    currency: CurrencyIn | None = None
     # Units of the order's currency per 1 unit of `currency` — a CNY product in a
     # RUB order reads "1 CNY = 11.5 RUB" -> 11.5. Required when the two currencies
     # differ; must be 1 (or omitted) when they match.
@@ -41,7 +41,7 @@ class ProductUpdate(BaseModel):
     details: str | None = None
     quantity: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=3)
     price: Decimal | None = Field(default=None, ge=0, max_digits=14, decimal_places=2)
-    currency: Currency | None = None
+    currency: CurrencyIn | None = None
     exchange_rate: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=6)
     photo_key: str | None = None
 

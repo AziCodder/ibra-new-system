@@ -20,7 +20,7 @@ import ShipmentLinesEditor, { type ShipmentLine, remainingByProduct, validateLin
 import Tag, { type TagColor } from './Tag'
 import TelegramGroupPicker from './TelegramGroupPicker'
 
-const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
+const CURRENCIES = ['USD', 'CNY', 'RUB']
 
 const STATUS_LABELS: Record<LogisticsStatus, string> = {
   in_transit: 'В дороге',

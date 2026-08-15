@@ -7,7 +7,7 @@ import { fetchUsers } from '../api/users'
 import { useAuth } from '../contexts/AuthContext'
 import FileUploader, { type UploadedFile } from './FileUploader'
 
-const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
+const CURRENCIES = ['USD', 'CNY', 'RUB']
 const MAX_ORDER_FILES = 5
 
 export default function CreateOrderModal({ onClose }: { onClose: () => void }) {

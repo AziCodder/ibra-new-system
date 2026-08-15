@@ -3,14 +3,14 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
-from app.core.currency import Currency
+from app.core.currency import Currency, CurrencyIn
 from app.models.ledger_entry import LedgerEntryType
 
 
 class LedgerEntryCreate(BaseModel):
     type: LedgerEntryType
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
-    currency: Currency
+    currency: CurrencyIn
     # Units of the order's currency per 1 unit of `currency` — a CNY entry in a
     # RUB order reads "1 CNY = 11.5 RUB" -> 11.5, so converting multiplies.
     # 1 when they match.

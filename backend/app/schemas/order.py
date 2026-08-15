@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
-from app.core.currency import Currency
+from app.core.currency import Currency, CurrencyIn
 from app.models.order import OrderStatus
 
 MAX_ORDER_FILES = 5
@@ -11,7 +11,7 @@ MAX_ORDER_FILES = 5
 
 class OrderCreate(BaseModel):
     client_id: int
-    currency: Currency = Currency.USD
+    currency: CurrencyIn = CurrencyIn.USD
     details: str = ""
     manager_id: int | None = None
     file_keys: list[str] = Field(default_factory=list, max_length=MAX_ORDER_FILES)

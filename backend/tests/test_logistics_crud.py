@@ -746,8 +746,8 @@ async def test_reaccept_after_unaccept_round_trip():
                 LogisticsAccept(
                     received_date=SHIP_DATE,
                     expense_amount=Decimal("75.00"),
-                    currency="EUR",
-                    exchange_rate=Decimal("0.9"),
+                    currency="CNY",
+                    exchange_rate=Decimal("0.14"),
                     note="Second time",
                 ),
                 admin,
@@ -755,7 +755,7 @@ async def test_reaccept_after_unaccept_round_trip():
             )
             assert reaccepted.status == LogisticsStatus.accepted
             assert reaccepted.expense_amount == Decimal("75.00")
-            assert reaccepted.currency == "EUR"
+            assert reaccepted.currency == "CNY"
             assert reaccepted.acceptance_note == "Second time"
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id, admin.id])

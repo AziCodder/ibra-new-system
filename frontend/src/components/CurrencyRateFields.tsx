@@ -1,4 +1,4 @@
-export const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB']
+export const CURRENCIES = ['USD', 'CNY', 'RUB']
 
 function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
