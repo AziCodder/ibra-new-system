@@ -90,7 +90,7 @@ async def test_partial_payments_decrease_remaining():
             created = await create_payment(
                 order.id,
                 request.id,
-                PaymentCreate(amount=Decimal("20.00"), currency="USD", exchange_rate=Decimal("1")),
+                PaymentCreate(amount=Decimal("20.00"), exchange_rate=Decimal("1")),
                 owner,
                 session,
             )
@@ -106,7 +106,7 @@ async def test_partial_payments_decrease_remaining():
             await create_payment(
                 order.id,
                 request.id,
-                PaymentCreate(amount=Decimal("30.00"), currency="USD", exchange_rate=Decimal("1")),
+                PaymentCreate(amount=Decimal("30.00"), exchange_rate=Decimal("1")),
                 owner,
                 session,
             )
@@ -134,7 +134,7 @@ async def test_recording_a_payment_notifies_the_client_with_the_receipt():
                     order.id,
                     request.id,
                     PaymentCreate(
-                        amount=Decimal("20.00"), currency="USD", exchange_rate=Decimal("1"),
+                        amount=Decimal("20.00"), exchange_rate=Decimal("1"),
                         file_key="receipt.pdf", note="первый транш",
                     ),
                     owner,
@@ -153,22 +153,46 @@ async def test_recording_a_payment_notifies_the_client_with_the_receipt():
 
 
 @pytest.mark.asyncio
-async def test_payment_in_different_currency_converted_via_exchange_rate():
+async def test_exchange_rate_does_not_move_the_remaining_balance():
+    """The rate prices the payment for the order totals, not for the request.
+
+    A payment is made in the request's own currency, so 20 paid off a request is 20
+    off it whatever the money cost. Folding the rate in here would report 20 at rate
+    12 as 240 and reject the payment as an overpayment.
+    """
     client, supplier, owner, other, observer, order, product, request = await _setup()
     try:
         async with async_session_factory() as session:
-            # 140 CNY at "1 CNY = 0.142857 USD" ≈ 20 USD applied toward a USD-denominated request
             await create_payment(
                 order.id,
                 request.id,
-                PaymentCreate(amount=Decimal("140.00"), currency="CNY", exchange_rate=Decimal("0.142857")),
+                PaymentCreate(amount=Decimal("20.00"), exchange_rate=Decimal("12")),
                 owner,
                 session,
             )
 
         async with async_session_factory() as session:
             fetched = await get_payment_request(order.id, request.id, owner, session)
-            assert fetched.paid_amount == Decimal("140.00") * Decimal("0.142857")
+            assert fetched.paid_amount == Decimal("20.00")
+            assert fetched.remaining_amount == fetched.total_amount - Decimal("20.00")
+    finally:
+        await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id])
+
+
+@pytest.mark.asyncio
+async def test_payment_currency_is_taken_from_the_request():
+    """The client never sends a currency; the request's own is stored."""
+    client, supplier, owner, other, observer, order, product, request = await _setup()
+    try:
+        async with async_session_factory() as session:
+            payment = await create_payment(
+                order.id,
+                request.id,
+                PaymentCreate(amount=Decimal("5.00"), exchange_rate=Decimal("1")),
+                owner,
+                session,
+            )
+            assert payment.currency == product.currency
     finally:
         await _cleanup(client.id, supplier.id, [owner.id, other.id, observer.id])
 
@@ -184,7 +208,7 @@ async def test_count_payment_request_dependencies_counts_payments_and_blocks_del
             await create_payment(
                 order.id,
                 request.id,
-                PaymentCreate(amount=Decimal("10.00"), currency="USD", exchange_rate=Decimal("1")),
+                PaymentCreate(amount=Decimal("10.00"), exchange_rate=Decimal("1")),
                 owner,
                 session,
             )
@@ -219,7 +243,7 @@ async def test_manager_cannot_access_payments_on_other_managers_order():
                 await create_payment(
                     order.id,
                     request.id,
-                    PaymentCreate(amount=Decimal("5.00"), currency="USD", exchange_rate=Decimal("1")),
+                    PaymentCreate(amount=Decimal("5.00"), exchange_rate=Decimal("1")),
                     other,
                     session,
                 )
@@ -237,7 +261,7 @@ async def test_payment_exceeding_remaining_balance_is_rejected():
                 await create_payment(
                     order.id,
                     request.id,
-                    PaymentCreate(amount=Decimal("50000.00"), currency="USD", exchange_rate=Decimal("1")),
+                    PaymentCreate(amount=Decimal("50000.00"), exchange_rate=Decimal("1")),
                     owner,
                     session,
                 )
@@ -259,7 +283,7 @@ async def test_partial_payment_then_overpayment_of_remainder_is_rejected():
             await create_payment(
                 order.id,
                 request.id,
-                PaymentCreate(amount=Decimal("20.00"), currency="USD", exchange_rate=Decimal("1")),
+                PaymentCreate(amount=Decimal("20.00"), exchange_rate=Decimal("1")),
                 owner,
                 session,
             )
@@ -269,7 +293,7 @@ async def test_partial_payment_then_overpayment_of_remainder_is_rejected():
                 await create_payment(
                     order.id,
                     request.id,
-                    PaymentCreate(amount=Decimal("30.01"), currency="USD", exchange_rate=Decimal("1")),
+                    PaymentCreate(amount=Decimal("30.01"), exchange_rate=Decimal("1")),
                     owner,
                     session,
                 )
@@ -291,7 +315,7 @@ async def test_observer_can_read_but_not_create_payment():
             await create_payment(
                 order.id,
                 request.id,
-                PaymentCreate(amount=Decimal("5.00"), currency="USD", exchange_rate=Decimal("1")),
+                PaymentCreate(amount=Decimal("5.00"), exchange_rate=Decimal("1")),
                 owner,
                 session,
             )
@@ -305,7 +329,7 @@ async def test_observer_can_read_but_not_create_payment():
                 await create_payment(
                     order.id,
                     request.id,
-                    PaymentCreate(amount=Decimal("5.00"), currency="USD", exchange_rate=Decimal("1")),
+                    PaymentCreate(amount=Decimal("5.00"), exchange_rate=Decimal("1")),
                     observer,
                     session,
                 )

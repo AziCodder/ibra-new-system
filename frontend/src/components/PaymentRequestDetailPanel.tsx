@@ -5,8 +5,6 @@ import { fetchPayments, createPayment, type Payment } from '../api/payments'
 import FileUploader, { type UploadedFile } from './FileUploader'
 import PaymentDetailModal from './PaymentDetailModal'
 
-const CURRENCIES = ['USD', 'CNY', 'RUB']
-
 const PRIORITY_LABELS: Record<PaymentRequestPriority, string> = {
   low: 'Низкий',
   normal: 'Обычно',
@@ -45,18 +43,14 @@ export default function PaymentRequestDetailPanel({
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
 
   const [amount, setAmount] = useState('')
-  const [currency, setCurrency] = useState(request.currency)
   const [exchangeRate, setExchangeRate] = useState('1')
   const [paidAt, setPaidAt] = useState(() => new Date().toISOString().slice(0, 10))
   const [note, setNote] = useState('')
   const [file, setFile] = useState<UploadedFile | null>(null)
 
-  function handleCurrencyChange(next: string) {
-    setCurrency(next)
-    // Same currency as the request needs no conversion (rate 1); a different
-    // currency must never silently keep a stale/default rate — force re-entry.
-    setExchangeRate(next === request.currency ? '1' : '')
-  }
+  // A request denominated in the order's own currency needs no rate at all, so the
+  // field is hidden and 1 stands in for it.
+  const needsRate = request.currency !== request.order_currency
 
   const { data: payments, isLoading: paymentsLoading } = useQuery({
     queryKey: ['payments', orderId, request.id],
@@ -67,7 +61,6 @@ export default function PaymentRequestDetailPanel({
     mutationFn: () =>
       createPayment(orderId, request.id, {
         amount: Number(amount),
-        currency,
         exchange_rate: Number(exchangeRate),
         file_key: file?.key ?? null,
         note,
@@ -78,7 +71,6 @@ export default function PaymentRequestDetailPanel({
       queryClient.invalidateQueries({ queryKey: ['payments', orderId, request.id] })
       onMutate?.()
       setAmount('')
-      setCurrency(request.currency)
       setExchangeRate('1')
       setPaidAt(new Date().toISOString().slice(0, 10))
       setNote('')
@@ -124,7 +116,7 @@ export default function PaymentRequestDetailPanel({
     }
   }
 
-  const canSave = Number(amount) > 0 && Number(exchangeRate) > 0 && paidAt !== ''
+  const canSave = Number(amount) > 0 && (!needsRate || Number(exchangeRate) > 0) && paidAt !== ''
 
   return (
     <div className="fixed inset-0 z-50" onClick={onClose}>
@@ -216,55 +208,46 @@ export default function PaymentRequestDetailPanel({
               Внести оплату
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              <label className="block">
-                <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Сумма</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-                />
-              </label>
-              <label className="block">
-                <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Валюта</span>
-                <select
-                  value={currency}
-                  onChange={(e) => handleCurrencyChange(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-                >
-                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
-            </div>
-
-            <label className="block mb-1.5">
-              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Курс (вручную)</span>
+            <label className="block mb-3">
+              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
+                Сумма ({request.currency})
+              </span>
               <input
                 type="number"
                 min="0"
-                step="0.01"
-                placeholder={currency !== request.currency ? `1 ${currency} = ? ${request.currency}` : undefined}
-                value={exchangeRate}
-                onChange={(e) => setExchangeRate(e.target.value)}
+                step="1"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{
-                  background: 'var(--color-surface)',
-                  border: currency !== request.currency && !exchangeRate ? '1px solid var(--color-danger)' : '1px solid var(--color-border)',
-                  color: 'var(--color-text)',
-                }}
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               />
             </label>
-            {currency !== request.currency && (
-              <div className="text-xs mb-3" style={{ color: 'var(--color-muted)' }}>
-                Валюта платежа отличается от валюты запроса ({request.currency}) — курс обязателен, суммы автоматически не совпадут без него.
-              </div>
+
+            {needsRate && (
+              <label className="block mb-3">
+                <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
+                  Курс: 1 {request.currency} = ? {request.order_currency}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={{
+                    background: 'var(--color-surface)',
+                    border: Number(exchangeRate) > 0 ? '1px solid var(--color-border)' : '1px solid var(--color-danger)',
+                    color: 'var(--color-text)',
+                  }}
+                />
+                <span className="block text-xs mt-1.5" style={{ color: 'var(--color-muted)' }}>
+                  {Number(amount) > 0 && Number(exchangeRate) > 0
+                    ? `В итогах заказа: ${formatNumber(Number(amount) * Number(exchangeRate))} ${request.order_currency}`
+                    : `Курс нужен, чтобы учесть оплату в итогах заказа (${request.order_currency}).`}
+                </span>
+              </label>
             )}
-            {currency === request.currency && <div className="mb-3" />}
 
             <label className="block mb-3">
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Дата оплаты</span>
@@ -335,9 +318,7 @@ export default function PaymentRequestDetailPanel({
                   </div>
                   <div style={{ color: 'var(--color-muted)' }}>
                     {new Date(p.paid_at).toLocaleDateString('ru-RU')}
-                    {p.currency === request.currency
-                      ? ` · курс ${p.exchange_rate}`
-                      : ` · курс 1 ${p.currency} = ${p.exchange_rate} ${request.currency}`}
+                    {needsRate ? ` · курс 1 ${p.currency} = ${p.exchange_rate} ${request.order_currency}` : ''}
                     {p.note ? ` · ${p.note}` : ''}
                   </div>
                 </li>

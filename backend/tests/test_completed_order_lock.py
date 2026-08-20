@@ -194,7 +194,7 @@ async def test_admin_cannot_create_payment_on_completed_order():
             with pytest.raises(HTTPException) as exc_info:
                 await create_payment(
                     order.id, pr.id,
-                    PaymentCreate(amount=Decimal("1.00"), currency="USD", exchange_rate=Decimal("1")),
+                    PaymentCreate(amount=Decimal("1.00"), exchange_rate=Decimal("1")),
                     admin, session,
                 )
             assert exc_info.value.status_code == 409

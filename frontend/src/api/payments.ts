@@ -16,7 +16,8 @@ export interface Payment {
 
 export interface PaymentCreate {
   amount: number
-  currency: string
+  /** Rate towards the order's currency: "1 CNY = 12 RUB" -> 12. The currency itself
+   *  is not sent — a payment is always made in its request's currency. */
   exchange_rate: number
   file_key?: string | null
   note?: string
@@ -25,7 +26,6 @@ export interface PaymentCreate {
 
 export interface PaymentUpdate {
   amount: number
-  currency: string
   exchange_rate: number
   file_key: string | null
   note: string

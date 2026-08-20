@@ -463,7 +463,7 @@ async def test_product_reflects_requested_and_prorated_paid_amounts():
             await create_payment(
                 order.id,
                 request.id,
-                PaymentCreate(amount=Decimal("20.00"), currency="USD", exchange_rate=Decimal("1")),
+                PaymentCreate(amount=Decimal("20.00"), exchange_rate=Decimal("1")),
                 owner,
                 session,
             )

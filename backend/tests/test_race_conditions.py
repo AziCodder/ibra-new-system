@@ -161,7 +161,7 @@ async def test_concurrent_payments_do_not_overpay_request():
                     out = await create_payment(
                         order.id,
                         request.id,
-                        PaymentCreate(amount=Decimal("30.00"), currency="USD", exchange_rate=Decimal("1")),
+                        PaymentCreate(amount=Decimal("30.00"), exchange_rate=Decimal("1")),
                         owner,
                         session,
                     )

@@ -21,9 +21,15 @@ def test_product_rejects_unknown_currency():
         ProductCreate(supplier_id=1, name="Widget", quantity=Decimal("1"), price=Decimal("1"), currency="ZZZ")
 
 
-def test_payment_rejects_unknown_currency():
-    with pytest.raises(ValidationError):
-        PaymentCreate(amount=Decimal("1"), currency="ZZZ", exchange_rate=Decimal("1"))
+def test_payment_does_not_take_a_currency():
+    """A payment is always made in its request's currency, so none is accepted.
+
+    Anything sent under that name is ignored rather than stored — the router reads
+    the currency off the request.
+    """
+    assert "currency" not in PaymentCreate.model_fields
+    created = PaymentCreate(amount=Decimal("1"), exchange_rate=Decimal("1"), currency="EUR")
+    assert not hasattr(created, "currency")
 
 
 def test_ledger_entry_rejects_unknown_currency():
@@ -46,7 +52,6 @@ def test_order_currency_defaults_to_rub():
     [
         lambda: OrderCreate(client_id=1, currency="EUR"),
         lambda: ProductCreate(supplier_id=1, name="Widget", quantity=Decimal("1"), price=Decimal("1"), currency="EUR"),
-        lambda: PaymentCreate(amount=Decimal("1"), currency="EUR", exchange_rate=Decimal("1")),
         lambda: LedgerEntryCreate(type="income", amount=Decimal("1"), currency="EUR", exchange_rate=Decimal("1")),
     ],
 )

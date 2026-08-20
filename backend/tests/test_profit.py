@@ -126,9 +126,9 @@ async def test_rub_order_tz_example_1():
                                            amount=Decimal("12100.00")))
             session.add_all([
                 Payment(payment_request_id=pr.id, author_id=mgr.id,
-                        amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
+                        amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("10.000000")),
                 Payment(payment_request_id=pr.id, author_id=mgr.id,
-                        amount=Decimal("8100.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
+                        amount=Decimal("8100.00"), currency="CNY", exchange_rate=Decimal("10.000000")),
             ])
 
             # Accepted logistics with RUB expense
@@ -209,7 +209,7 @@ async def test_usd_order_tz_example_2():
             await session.commit()
             await session.refresh(product)
 
-            # Purchase: 400 CNY * 0.2 = 80 USD
+            # Purchase: 80 USD * 1 = 80 USD
             pr = PaymentRequest(order_id=order.id, created_by_id=mgr.id)
             session.add(pr)
             await session.commit()
@@ -218,7 +218,7 @@ async def test_usd_order_tz_example_2():
             session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id,
                                            amount=Decimal("80.00")))
             session.add(Payment(payment_request_id=pr.id, author_id=mgr.id,
-                                amount=Decimal("400.00"), currency="CNY", exchange_rate=Decimal("0.200000")))
+                                amount=Decimal("80.00"), currency="USD", exchange_rate=Decimal("1.000000")))
 
             # Accepted logistics: 300 RUB * 0.01 = 3 USD
             await add_shipment(
@@ -254,17 +254,17 @@ async def test_usd_order_tz_example_2():
 
 @pytest.mark.asyncio
 @pytest.mark.key_profit
-async def test_purchases_convert_through_both_the_payment_and_the_product_rate():
-    """A payment in a third currency, against a product priced in a second one.
+async def test_purchases_use_the_rate_each_instalment_was_bought_at():
+    """Instalments bought on different days each carry their own rate.
 
-    Order is USD. The product is priced in CNY (1 CNY = 0.125 USD), so the payment
-    request is a CNY request. The payment itself is made in RUB, and its own rate
-    converts RUB into that request's currency (1 RUB = 0.08 CNY).
+    Order is USD, the product is priced in CNY, so the request is a CNY request and
+    every payment against it is in CNY. What differs between them is the rate the
+    payer got: 400 CNY at 0.125 and 600 CNY at 0.130.
 
-    Purchases: 5 000 RUB * 0.08 = 400 CNY, * 0.125 = 50 USD
+    Purchases: 400 * 0.125 + 600 * 0.130 = 50 + 78 = 128 USD
 
-    Neither rate alone gets there — this is what regressed when a product could
-    only ever be priced in its order's currency.
+    The product's own rate prices the goods and stays out of it; folding it in here
+    would convert the same money a second time.
     """
     try:
         async with async_session_factory() as session:
@@ -296,16 +296,20 @@ async def test_purchases_convert_through_both_the_payment_and_the_product_rate()
 
             session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id,
                                            amount=Decimal("1000.00")))
-            session.add(Payment(payment_request_id=pr.id, author_id=mgr.id,
-                                amount=Decimal("5000.00"), currency="RUB", exchange_rate=Decimal("0.080000")))
+            session.add_all([
+                Payment(payment_request_id=pr.id, author_id=mgr.id,
+                        amount=Decimal("400.00"), currency="CNY", exchange_rate=Decimal("0.125000")),
+                Payment(payment_request_id=pr.id, author_id=mgr.id,
+                        amount=Decimal("600.00"), currency="CNY", exchange_rate=Decimal("0.130000")),
+            ])
             await session.commit()
 
         async with async_session_factory() as session:
             b = await calculate_profit(order.id, session)
 
         assert b.currency == "USD"
-        assert b.purchases == Decimal("50.0000")
-        assert b.profit == Decimal("-50.0000")
+        assert b.purchases == Decimal("128.000000")
+        assert b.profit == Decimal("-128.000000")
     finally:
         await _cleanup("TSTPRFT4", ["prft4_mgr"])
 

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
 from app.models.client import Client
+from app.models.order import Order
 from app.models.payment_request import PaymentRequest, PaymentRequestItem
 from app.models.product import Product
 from app.models.user import User
@@ -54,6 +55,9 @@ async def _to_payment_request_out(request: PaymentRequest, session: AsyncSession
     currency = rows[0][2] if rows else ""
     total_amount = sum((item.amount for item in items), start=Decimal("0"))
     paid_amount = await get_payment_request_paid(session, request.id)
+    order_currency = (
+        await session.execute(select(Order.currency).where(Order.id == request.order_id))
+    ).scalar_one()
 
     return PaymentRequestOut(
         id=request.id,
@@ -65,6 +69,7 @@ async def _to_payment_request_out(request: PaymentRequest, session: AsyncSession
         priority=request.priority,
         file_keys=request.file_keys,
         currency=currency,
+        order_currency=order_currency,
         total_amount=total_amount,
         paid_amount=paid_amount,
         remaining_amount=total_amount - paid_amount,

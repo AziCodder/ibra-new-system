@@ -6,31 +6,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.client import Client
 from app.models.order import Order
 from app.models.payment import Payment
-from app.models.payment_request import PaymentRequest, PaymentRequestItem
-from app.models.product import Product
+from app.models.payment_request import PaymentRequest
 from app.services.notification_templates import payment_made_message
 from app.services.notifications import notify_targets
-from app.services.payment_remaining import get_payment_request_paid, get_payment_request_total
+from app.services.payment_remaining import (
+    get_payment_request_currency,
+    get_payment_request_paid,
+    get_payment_request_total,
+)
 from app.services.telegram_groups import get_client_send_targets
 
 logger = logging.getLogger("notifications")
-
-
-async def _request_currency(request_id: int, session: AsyncSession) -> str:
-    """The currency a request is denominated in — that of the products on it.
-
-    Mirrors how the payment-request summaries derive it (payment_requests_global).
-    A request always has at least one item when created through the API.
-    """
-    currency = (
-        await session.execute(
-            select(Product.currency)
-            .join(PaymentRequestItem, PaymentRequestItem.product_id == Product.id)
-            .where(PaymentRequestItem.payment_request_id == request_id)
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    return currency or ""
 
 
 async def notify_payment_recorded(payment: Payment, session: AsyncSession) -> None:
@@ -64,7 +50,7 @@ async def notify_payment_recorded(payment: Payment, session: AsyncSession) -> No
             currency=payment.currency,
             exchange_rate=payment.exchange_rate,
             remaining_after=total - paid,
-            request_currency=await _request_currency(request.id, session),
+            request_currency=await get_payment_request_currency(session, request.id),
             note=payment.note,
             order_id=order.id,
         )

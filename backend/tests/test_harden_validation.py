@@ -56,12 +56,12 @@ def test_ledger_rejects_negative_amount():
 
 def test_payment_rejects_negative_exchange_rate():
     with pytest.raises(ValidationError):
-        PaymentCreate(amount=Decimal("10"), currency="USD", exchange_rate=Decimal("-0.5"))
+        PaymentCreate(amount=Decimal("10"), exchange_rate=Decimal("-0.5"))
 
 
 def test_payment_rejects_zero_amount():
     with pytest.raises(ValidationError):
-        PaymentCreate(amount=Decimal("0"), currency="USD", exchange_rate=Decimal("1"))
+        PaymentCreate(amount=Decimal("0"), exchange_rate=Decimal("1"))
 
 
 def test_logistics_accept_rejects_negative_exchange_rate():

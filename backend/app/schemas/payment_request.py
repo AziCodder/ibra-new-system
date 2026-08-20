@@ -50,6 +50,9 @@ class PaymentRequestOut(BaseModel):
     priority: PaymentRequestPriority
     file_keys: list[str]
     currency: str
+    # The order's currency, which every payment against this request converts
+    # into — the payment form quotes its rate as "1 {currency} = ? {order_currency}".
+    order_currency: Currency
     total_amount: Decimal
     paid_amount: Decimal
     remaining_amount: Decimal
@@ -64,4 +67,3 @@ class PaymentRequestSummaryOut(PaymentRequestOut):
     client_name: str
     manager_name: str
     manager_id: int
-    order_currency: Currency

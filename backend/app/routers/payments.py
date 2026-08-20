@@ -13,7 +13,11 @@ from app.schemas.payment import PaymentCreate, PaymentOut, PaymentUpdate
 from app.services.order_access import get_order_for_read as _get_order_for_read
 from app.services.order_access import get_order_for_write as _get_order_for_write
 from app.services.payment_notifications import notify_payment_recorded
-from app.services.payment_remaining import get_payment_request_remaining, get_payment_request_remaining_excluding
+from app.services.payment_remaining import (
+    get_payment_request_currency,
+    get_payment_request_remaining,
+    get_payment_request_remaining_excluding,
+)
 
 router = APIRouter(prefix="/api/orders/{order_id}/payment-requests/{request_id}/payments", tags=["payments"])
 
@@ -86,19 +90,20 @@ async def create_payment(
     await _get_order_for_write(order_id, user, session)
     await _get_payment_request_or_404(order_id, request_id, session)
 
+    # Both sides are in the request's own currency — the payment is made in it,
+    # so the amount needs no conversion before the comparison.
     remaining = await get_payment_request_remaining(session, request_id)
-    converted_amount = body.amount * body.exchange_rate
-    if converted_amount > remaining:
+    if body.amount > remaining:
         raise HTTPException(
             status_code=422,
-            detail=f"Payment amount ({converted_amount}) exceeds remaining balance ({remaining})",
+            detail=f"Payment amount ({body.amount}) exceeds remaining balance ({remaining})",
         )
 
     payment = Payment(
         payment_request_id=request_id,
         author_id=user.id,
         amount=body.amount,
-        currency=body.currency,
+        currency=await get_payment_request_currency(session, request_id),
         exchange_rate=body.exchange_rate,
         file_key=body.file_key,
         note=body.note,
@@ -125,15 +130,14 @@ async def update_payment(
     payment = await _get_payment_or_404(request_id, payment_id, session)
 
     remaining = await get_payment_request_remaining_excluding(session, request_id, payment_id)
-    converted_amount = body.amount * body.exchange_rate
-    if converted_amount > remaining:
+    if body.amount > remaining:
         raise HTTPException(
             status_code=422,
-            detail=f"Payment amount ({converted_amount}) exceeds remaining balance ({remaining})",
+            detail=f"Payment amount ({body.amount}) exceeds remaining balance ({remaining})",
         )
 
     payment.amount = body.amount
-    payment.currency = body.currency
+    payment.currency = await get_payment_request_currency(session, request_id)
     payment.exchange_rate = body.exchange_rate
     payment.file_key = body.file_key
     payment.note = body.note

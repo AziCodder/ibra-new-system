@@ -91,6 +91,9 @@ async def test_profit_calculation_tz_example():
     Rates are stored as "order currency per 1 operation-currency unit" and convert
     by multiplication, so 1 USD = 100 RUB and 1 CNY = 10 RUB. The ТЗ's own quotes
     would not land on the round totals, so the foreign amounts are picked to.
+
+    The CNY payments carry that 1 CNY = 10 RUB rate themselves: a payment is made in
+    its request's currency and its rate is what that money cost in the order's.
     """
     async with async_session_factory() as session:
         client = Client(code="KEYPRF", full_name="Key Profit Client")
@@ -128,9 +131,9 @@ async def test_profit_calculation_tz_example():
         session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id, amount=Decimal("12100.00")))
         session.add_all([
             Payment(payment_request_id=pr.id, author_id=mgr.id,
-                    amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
+                    amount=Decimal("4000.00"), currency="CNY", exchange_rate=Decimal("10.000000")),
             Payment(payment_request_id=pr.id, author_id=mgr.id,
-                    amount=Decimal("8100.00"), currency="CNY", exchange_rate=Decimal("1.000000")),
+                    amount=Decimal("8100.00"), currency="CNY", exchange_rate=Decimal("10.000000")),
         ])
         await add_shipment(
                         session,

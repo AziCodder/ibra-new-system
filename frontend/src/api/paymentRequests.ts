@@ -17,6 +17,8 @@ export interface PaymentRequest {
   priority: PaymentRequestPriority
   file_keys: string[]
   currency: string
+  /** The order's currency — what payments against this request convert into. */
+  order_currency: string
   total_amount: string
   paid_amount: string
   remaining_amount: string
@@ -74,7 +76,6 @@ export interface PaymentRequestSummary extends PaymentRequest {
   client_name: string
   manager_name: string
   manager_id: number
-  order_currency: string
 }
 
 /** 'positive' (the server default) keeps only requests that still owe money. */

@@ -5,8 +5,6 @@ import { updatePayment, deletePayment, type Payment } from '../api/payments'
 import type { PaymentRequest } from '../api/paymentRequests'
 import FileUploader, { type UploadedFile } from './FileUploader'
 
-const CURRENCIES = ['USD', 'CNY', 'RUB']
-
 function formatNumber(value: number): string {
   return value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })
 }
@@ -38,7 +36,6 @@ export default function PaymentDetailModal({
   const [error, setError] = useState('')
 
   const [amount, setAmount] = useState(payment.amount)
-  const [currency, setCurrency] = useState(payment.currency)
   const [exchangeRate, setExchangeRate] = useState(payment.exchange_rate)
   const [paidAt, setPaidAt] = useState(payment.paid_at.slice(0, 10))
   const [note, setNote] = useState(payment.note)
@@ -46,10 +43,8 @@ export default function PaymentDetailModal({
     payment.file_key ? { key: payment.file_key, filename: payment.file_key, size: 0 } : null
   )
 
-  function handleCurrencyChange(next: string) {
-    setCurrency(next)
-    setExchangeRate(next === request.currency ? '1' : '')
-  }
+  // A request already denominated in the order's currency needs no rate.
+  const needsRate = request.currency !== request.order_currency
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['payment-requests', orderId] })
@@ -61,7 +56,6 @@ export default function PaymentDetailModal({
     mutationFn: () =>
       updatePayment(orderId, request.id, payment.id, {
         amount: Number(amount),
-        currency,
         exchange_rate: Number(exchangeRate),
         file_key: file?.key ?? null,
         note,
@@ -89,9 +83,9 @@ export default function PaymentDetailModal({
     }
   }
 
-  const canSave = Number(amount) > 0 && Number(exchangeRate) > 0 && paidAt !== ''
-  // The rate is quoted from the payment's currency inwards ("1 CNY = ? RUB"),
-  // so converting a payment into the request's currency multiplies.
+  const canSave = Number(amount) > 0 && (!needsRate || Number(exchangeRate) > 0) && paidAt !== ''
+  // The rate is quoted towards the order's currency ("1 CNY = ? RUB"), so what the
+  // payment contributes to the order totals is amount * rate.
   const converted = Number(amount) * (Number(exchangeRate) || 1)
 
   return (
@@ -119,14 +113,17 @@ export default function PaymentDetailModal({
             <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
               <Row label="Автор" value={payment.author_name} />
               <Row label="Сумма" value={`${formatNumber(Number(payment.amount))} ${payment.currency}`} />
-              <Row
-                label="Курс"
-                value={payment.currency === request.currency
-                  ? String(payment.exchange_rate)
-                  : `1 ${payment.currency} = ${payment.exchange_rate} ${request.currency}`}
-              />
-              {payment.currency !== request.currency && (
-                <Row label="В валюте запроса" value={`${formatNumber(converted)} ${request.currency}`} />
+              {needsRate && (
+                <>
+                  <Row
+                    label="Курс"
+                    value={`1 ${payment.currency} = ${payment.exchange_rate} ${request.order_currency}`}
+                  />
+                  <Row
+                    label="В итогах заказа"
+                    value={`${formatNumber(Number(payment.amount) * Number(payment.exchange_rate))} ${request.order_currency}`}
+                  />
+                </>
               )}
               <Row label="Дата оплаты" value={new Date(payment.paid_at).toLocaleDateString('ru-RU')} />
               {payment.note && (
@@ -165,55 +162,46 @@ export default function PaymentDetailModal({
           </>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-              <label className="block">
-                <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Сумма</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-                />
-              </label>
-              <label className="block">
-                <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Валюта</span>
-                <select
-                  value={currency}
-                  onChange={(e) => handleCurrencyChange(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-                >
-                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </label>
-            </div>
-
-            <label className="block mb-1.5">
-              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Курс (вручную)</span>
+            <label className="block mb-3">
+              <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
+                Сумма ({request.currency})
+              </span>
               <input
                 type="number"
                 min="0"
-                step="0.01"
-                placeholder={currency !== request.currency ? `1 ${currency} = ? ${request.currency}` : undefined}
-                value={exchangeRate}
-                onChange={(e) => setExchangeRate(e.target.value)}
+                step="1"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
                 className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{
-                  background: 'var(--color-surface)',
-                  border: currency !== request.currency && !exchangeRate ? '1px solid var(--color-danger)' : '1px solid var(--color-border)',
-                  color: 'var(--color-text)',
-                }}
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
               />
             </label>
-            {currency !== request.currency && (
-              <div className="text-xs mb-3" style={{ color: 'var(--color-muted)' }}>
-                Валюта платежа отличается от валюты запроса ({request.currency}) — курс обязателен.
-              </div>
+
+            {needsRate && (
+              <label className="block mb-3">
+                <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>
+                  Курс: 1 {request.currency} = ? {request.order_currency}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={{
+                    background: 'var(--color-surface)',
+                    border: Number(exchangeRate) > 0 ? '1px solid var(--color-border)' : '1px solid var(--color-danger)',
+                    color: 'var(--color-text)',
+                  }}
+                />
+                <span className="block text-xs mt-1.5" style={{ color: 'var(--color-muted)' }}>
+                  {Number(amount) > 0 && Number(exchangeRate) > 0
+                    ? `В итогах заказа: ${formatNumber(converted)} ${request.order_currency}`
+                    : `Курс нужен, чтобы учесть оплату в итогах заказа (${request.order_currency}).`}
+                </span>
+              </label>
             )}
-            {currency === request.currency && <div className="mb-3" />}
 
             <label className="block mb-3">
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Дата оплаты</span>

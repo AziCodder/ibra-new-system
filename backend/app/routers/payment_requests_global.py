@@ -17,7 +17,7 @@ from app.routers.auth import get_current_user
 from app.schemas.payment import PaymentCreate, PaymentOut
 from app.schemas.payment_request import PaymentRequestItemOut, PaymentRequestSummaryOut
 from app.services.payment_notifications import notify_payment_recorded
-from app.services.payment_remaining import get_payment_request_paid
+from app.services.payment_remaining import get_payment_request_currency, get_payment_request_paid
 
 router = APIRouter(prefix="/api/payment-requests", tags=["payment_requests_global"])
 
@@ -142,7 +142,7 @@ async def add_payment_global(
         payment_request_id=request_id,
         author_id=user.id,
         amount=body.amount,
-        currency=body.currency,
+        currency=await get_payment_request_currency(session, request_id),
         exchange_rate=body.exchange_rate,
         file_key=body.file_key,
         note=body.note,
