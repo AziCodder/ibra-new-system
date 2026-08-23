@@ -118,6 +118,22 @@ async def pending(limit: int = 200) -> list[StoredFile]:
         return list(result.scalars())
 
 
+async def due_for_check(limit: int = 500) -> list[StoredFile]:
+    """Очередь на сверку: сначала те, кого не проверяли дольше всех.
+
+    Сверять нужно и «здоровые» строки — расхождение как раз и означает, что
+    объект пропал там, где реестр считает его целым.
+    """
+    async with async_session_factory() as session:
+        result = await session.execute(
+            select(StoredFile)
+            .where(StoredFile.deleted_at.is_(None))
+            .order_by(StoredFile.checked_at.asc().nullsfirst(), StoredFile.created_at)
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+
 async def tombstones(limit: int = 200) -> list[StoredFile]:
     """Удалённые файлы, у которых копия где-то ещё осталась."""
     async with async_session_factory() as session:

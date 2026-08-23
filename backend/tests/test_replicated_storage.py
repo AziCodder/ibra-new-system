@@ -53,6 +53,16 @@ class FakeBucket:
         data, sha = self.objects[key]
         return ObjectInfo(key=key, size=len(data), sha256=sha)
 
+    async def list_keys(self, limit=None):
+        self._guard()
+        items = list(self.objects.items())[: limit or None]
+        return {
+            key: ObjectInfo(key=key, size=len(data), sha256=sha) for key, (data, sha) in items
+        }
+
+    async def ping(self):
+        self._guard()
+
 
 async def _cleanup(key: str) -> None:
     async with async_session_factory() as session:
