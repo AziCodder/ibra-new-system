@@ -1,7 +1,10 @@
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+if TYPE_CHECKING:
+    from app.services.s3 import S3Config
 
 _DEFAULT_SECRET = "change-me-to-random-string"
 
@@ -39,9 +42,60 @@ class Settings(BaseSettings):
     docker_proxy_url: str = "tcp://docker-socket-proxy:2375"
     compose_project: str = ""
 
+    # Хранилище вложений. "local" — папка на диске (разработка, тесты),
+    # "s3" — два независимых S3: основной (HostKey) + зеркало (Storj).
+    # Файл считается сохранённым, когда его принял основной бакет; зеркало
+    # догоняется фоновой задачей, если было недоступно.
+    storage_backend: Literal["local", "s3"] = "local"
+    s3_prefix: str = "files/"
+
+    s3_primary_label: str = "S3 основной"
+    s3_primary_endpoint: str = ""
+    s3_primary_region: str = ""
+    s3_primary_bucket: str = ""
+    s3_primary_access_key: str = ""
+    s3_primary_secret_key: str = ""
+
+    s3_mirror_label: str = "S3 зеркало"
+    s3_mirror_endpoint: str = ""
+    s3_mirror_region: str = ""
+    s3_mirror_bucket: str = ""
+    s3_mirror_access_key: str = ""
+    s3_mirror_secret_key: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def s3_primary_config(self) -> "S3Config":
+        from app.services.s3 import S3Config
+
+        return S3Config(
+            name="primary",
+            label=self.s3_primary_label,
+            endpoint_url=self.s3_primary_endpoint,
+            region=self.s3_primary_region,
+            access_key=self.s3_primary_access_key,
+            secret_key=self.s3_primary_secret_key,
+            bucket=self.s3_primary_bucket,
+            prefix=self.s3_prefix,
+        )
+
+    @property
+    def s3_mirror_config(self) -> "S3Config":
+        from app.services.s3 import S3Config
+
+        return S3Config(
+            name="mirror",
+            label=self.s3_mirror_label,
+            endpoint_url=self.s3_mirror_endpoint,
+            region=self.s3_mirror_region,
+            access_key=self.s3_mirror_access_key,
+            secret_key=self.s3_mirror_secret_key,
+            bucket=self.s3_mirror_bucket,
+            prefix=self.s3_prefix,
+        )
 
     @property
     def cookie_secure(self) -> bool:
@@ -88,6 +142,29 @@ class Settings(BaseSettings):
         if not self.trusted_hosts:
             raise ValueError("TRUSTED_HOSTS must be set in production (Host header allow-list)")
 
+        return self
+
+    @model_validator(mode="after")
+    def validate_storage(self) -> "Settings":
+        """Режим s3 без реквизитов основного бакета — гарантированная потеря
+        файлов при первой же загрузке, поэтому падаем на старте, а не в бою."""
+        if self.storage_backend != "s3":
+            return self
+
+        missing = [
+            name
+            for name, value in (
+                ("S3_PRIMARY_ENDPOINT", self.s3_primary_endpoint),
+                ("S3_PRIMARY_BUCKET", self.s3_primary_bucket),
+                ("S3_PRIMARY_ACCESS_KEY", self.s3_primary_access_key),
+                ("S3_PRIMARY_SECRET_KEY", self.s3_primary_secret_key),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                "STORAGE_BACKEND=s3 requires " + ", ".join(missing)
+            )
         return self
 
 

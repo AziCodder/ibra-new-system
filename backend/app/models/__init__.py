@@ -8,6 +8,7 @@ from app.models.order_sort_position import OrderSortPosition
 from app.models.payment import Payment
 from app.models.payment_request import PaymentRequest, PaymentRequestItem
 from app.models.product import Product
+from app.models.stored_file import StoredFile
 from app.models.supplier import Supplier
 from app.models.telegram_group import ClientTelegramGroup, TelegramGroup
 from app.models.user import User
@@ -26,6 +27,7 @@ __all__ = [
     "PaymentRequest",
     "PaymentRequestItem",
     "Product",
+    "StoredFile",
     "Supplier",
     "TelegramGroup",
     "User",
