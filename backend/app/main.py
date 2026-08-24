@@ -14,6 +14,7 @@ from app.routers.action_log import router as action_log_router
 from app.routers.auth import router as auth_router
 from app.routers.backups import router as backups_router
 from app.routers.clients import router as clients_router
+from app.routers.cluster import router as cluster_router
 from app.routers.files import router as files_router
 from app.routers.ledger_entries import router as ledger_entries_router
 from app.routers.logistics import router as logistics_router
@@ -77,6 +78,7 @@ app.include_router(action_log_router)
 app.include_router(auth_router)
 app.include_router(backups_router)
 app.include_router(clients_router)
+app.include_router(cluster_router)
 app.include_router(files_router)
 app.include_router(ledger_entries_router)
 app.include_router(logistics_router)

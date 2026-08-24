@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Шифрованный туннель между двумя серверами.
+#
+# Зачем он нужен. Серверы стоят у РАЗНЫХ провайдеров, значит весь обмен между
+# ними идёт через открытый интернет: и поток репликации PostgreSQL (это все
+# ваши данные, в открытом виде), и проверки «жив ли сосед». Туннель решает
+# сразу две задачи: трафик шифруется, и у каждого узла появляется постоянный
+# внутренний адрес (10.8.0.1 и 10.8.0.2), не зависящий от провайдера.
+#
+# Запускать на КАЖДОМ сервере:
+#   sudo ./setup-wireguard.sh A <публичный-IP-сервера-B>
+#   sudo ./setup-wireguard.sh B <публичный-IP-сервера-A>
+#
+# Скрипт печатает публичный ключ этого сервера — его нужно вписать на втором
+# (переменная PEER_PUBLIC_KEY) и наоборот. Порядок: запустить на обоих,
+# обменяться ключами, запустить повторно с ключом соседа.
+set -euo pipefail
+
+ROLE="${1:?укажите роль: A или B}"
+PEER_ENDPOINT="${2:?укажите публичный IP второго сервера}"
+PEER_PUBLIC_KEY="${PEER_PUBLIC_KEY:-}"
+WG_PORT="${WG_PORT:-51820}"
+
+case "$ROLE" in
+  A) SELF_IP=10.8.0.1; PEER_IP=10.8.0.2 ;;
+  B) SELF_IP=10.8.0.2; PEER_IP=10.8.0.1 ;;
+  *) echo "Роль должна быть A или B"; exit 1 ;;
+esac
+
+if ! command -v wg >/dev/null 2>&1; then
+  echo "== Ставлю wireguard"
+  apt-get update -qq
+  apt-get install -y -qq wireguard
+fi
+
+mkdir -p /etc/wireguard
+chmod 700 /etc/wireguard
+
+if [ ! -f /etc/wireguard/private.key ]; then
+  umask 077
+  wg genkey | tee /etc/wireguard/private.key | wg pubkey > /etc/wireguard/public.key
+fi
+
+SELF_PRIVATE_KEY="$(cat /etc/wireguard/private.key)"
+SELF_PUBLIC_KEY="$(cat /etc/wireguard/public.key)"
+
+if [ -z "$PEER_PUBLIC_KEY" ]; then
+  echo ""
+  echo "Публичный ключ этого сервера ($ROLE): $SELF_PUBLIC_KEY"
+  echo "Скопируйте его на второй сервер и запустите там:"
+  echo "  PEER_PUBLIC_KEY=$SELF_PUBLIC_KEY sudo ./setup-wireguard.sh <роль> <IP этого сервера>"
+  echo ""
+  echo "Затем вернитесь сюда и запустите с ключом соседа."
+  exit 0
+fi
+
+cat > /etc/wireguard/wg0.conf <<EOF
+# Туннель между серверами кластера. Создан setup-wireguard.sh
+[Interface]
+Address = $SELF_IP/24
+PrivateKey = $SELF_PRIVATE_KEY
+ListenPort = $WG_PORT
+
+[Peer]
+PublicKey = $PEER_PUBLIC_KEY
+Endpoint = $PEER_ENDPOINT:$WG_PORT
+AllowedIPs = $PEER_IP/32
+# Держим канал живым через NAT и фаерволы провайдеров: без этого туннель
+# «засыпает», и первая же проверка соседа выглядит как его смерть.
+PersistentKeepalive = 25
+EOF
+chmod 600 /etc/wireguard/wg0.conf
+
+systemctl enable --now "wg-quick@wg0" >/dev/null 2>&1 || systemctl restart "wg-quick@wg0"
+
+echo "== Туннель поднят: этот сервер $SELF_IP, сосед $PEER_IP"
+echo "Публичный ключ этого сервера: $SELF_PUBLIC_KEY"
+echo ""
+echo "Проверка связи:"
+ping -c 3 -W 2 "$PEER_IP" || echo "ВНИМАНИЕ: сосед не отвечает — проверьте ключи, порт $WG_PORT/udp и фаервол"

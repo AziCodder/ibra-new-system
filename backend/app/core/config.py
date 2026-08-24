@@ -79,6 +79,46 @@ class Settings(BaseSettings):
     # Как часто фоновый воркер сверяет содержимое двух S3-бакетов.
     storage_sync_interval_minutes: int = 15
 
+    # ───────────────────────────────────────────────────────────────── кластер
+    # Два сервера у разных провайдеров: один работает, второй держит
+    # синхронную реплику и готов принять нагрузку.
+    # Куда слать тревоги о кластере (chat_id администратора или группы).
+    # Пусто — тревоги останутся только в логах, и о них никто не узнает.
+    alert_chat_id: str = ""
+    node_name: str = "A"
+    node_public_ip: str = ""       # IP этого узла — на него переводится домен
+    peer_url: str = ""             # адрес второго узла ПО IP, не по домену
+    peer_check_timeout: float = 5.0
+    # Сколько подряд неудачных проверок нужно, чтобы признать узел мёртвым.
+    # Одна-две осечки — это моргнувшая сеть, а не авария.
+    peer_failures_before_failover: int = 4
+    # Автоматический перехват выключен по умолчанию: включать осознанно,
+    # когда репликация настроена и проверена учениями.
+    failover_enabled: bool = False
+    # Внешние точки: если они тоже недоступны, значит сеть потеряли МЫ,
+    # и перехватывать работу нельзя — иначе получим двух «главных».
+    failover_external_probes: Annotated[list[str], NoDecode] = [
+        "https://ya.ru",
+        "https://dns.google",
+    ]
+    # Синхронная репликация: транзакция ждёт запись на втором сервере.
+    sync_replication: bool = True
+    sync_standby_name: str = "standby"
+    # Через сколько секунд отсутствия реплики уходить в асинхронный режим,
+    # чтобы упавший резерв не заморозил запись на рабочем сервере.
+    sync_degrade_after_seconds: int = 30
+
+    # Переключение домена при аварии. reg.ru — где куплен домен;
+    # cloudflare — если делегировать зону туда (TTL 60 c вместо 300+).
+    dns_provider: Literal["none", "regru", "cloudflare"] = "none"
+    dns_zone: str = "cargo-ibragim.ru"
+    dns_record: str = "flow"
+    dns_ttl: int = 60
+    regru_login: str = ""
+    regru_password: str = ""
+    cloudflare_api_token: str = ""
+    cloudflare_zone_id: str = ""
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
@@ -127,6 +167,13 @@ class Settings(BaseSettings):
 
                 return json.loads(stripped)
             return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return value  # type: ignore[return-value]
+
+    @field_validator("failover_external_probes", mode="before")
+    @classmethod
+    def parse_probes(cls, value: object) -> list[str]:
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
         return value  # type: ignore[return-value]
 
     @field_validator("trusted_hosts", mode="before")

@@ -8,23 +8,41 @@ from app.core.database import async_session_factory
 from app.workers import scheduler
 
 
+def _jobs(**overrides) -> set[str]:
+    return {job.id for job in scheduler.build_scheduler().get_jobs()}
+
+
 @pytest.mark.asyncio
-async def test_scheduler_registers_every_job():
-    jobs = {job.id for job in scheduler.build_scheduler().get_jobs()}
-    assert jobs == {
+async def test_scheduler_registers_every_job(monkeypatch):
+    monkeypatch.setattr(settings, "peer_url", "http://10.8.0.2/api/cluster/ping")
+    monkeypatch.setattr(settings, "sync_replication", True)
+    assert _jobs() == {
         "hourly_backup",
         "daily_backup",
         "backup_cleanup",
         "backup_verify",
         "storage_sync",
+        "peer_watch",
+        "replication_guard",
     }
 
 
 @pytest.mark.asyncio
 async def test_backup_jobs_disappear_when_backups_are_off(monkeypatch):
     monkeypatch.setattr(settings, "backup_enabled", False)
-    jobs = {job.id for job in scheduler.build_scheduler().get_jobs()}
-    assert jobs == {"storage_sync"}  # сверка хранилища от бэкапов не зависит
+    monkeypatch.setattr(settings, "peer_url", "")
+    monkeypatch.setattr(settings, "sync_replication", False)
+    assert _jobs() == {"storage_sync"}  # сверка хранилища от бэкапов не зависит
+
+
+@pytest.mark.asyncio
+async def test_cluster_guards_appear_only_with_a_peer(monkeypatch):
+    """Без адреса соседа следить не за кем — задача только мусорила бы в логах."""
+    monkeypatch.setattr(settings, "peer_url", "")
+    assert "peer_watch" not in _jobs()
+
+    monkeypatch.setattr(settings, "peer_url", "http://10.8.0.1/api/cluster/ping")
+    assert "peer_watch" in _jobs()
 
 
 @pytest.mark.asyncio

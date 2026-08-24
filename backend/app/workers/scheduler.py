@@ -19,6 +19,13 @@
 * ежедневно 04:00          — чистка часовых копий по сроку хранения;
 * ежедневно 04:30          — проверка последней суточной копии восстановлением;
 * каждые 15 минут          — сверка и починка двух бакетов.
+
+Отдельно стоят два сторожа кластера — они работают на ОБОИХ узлах, потому
+что именно резерв должен заметить смерть главного:
+
+* каждые 30 секунд — наблюдение за соседом (перехват работы при аварии);
+* каждые 30 секунд — надзор за синхронной репликой (уход в асинхронный
+  режим, если реплика пропала, и возврат, когда она вернулась).
 """
 
 from __future__ import annotations
@@ -38,7 +45,7 @@ from app.core.config import settings
 from app.core.database import async_session_factory, engine
 from app.core.logging_config import setup_logging
 from app.models.backup_run import BackupKind
-from app.services import backup, storage_sync
+from app.services import backup, failover, storage_sync
 
 logger = logging.getLogger("worker")
 
@@ -54,22 +61,34 @@ async def is_primary() -> bool:
         return False
 
 
-def only_on_primary(name: str, func):
-    """Обёртка: задача выполняется лишь на главном узле и не роняет воркер."""
+def guarded(name: str, func, *, quiet: bool = False):
+    """Обёртка: задача не роняет воркер, что бы внутри ни случилось."""
 
     async def runner() -> None:
-        if not await is_primary():
-            logger.debug("задача %s пропущена: узел в резерве", name)
-            return
-        logger.info("задача %s: старт", name)
+        if not quiet:
+            logger.info("задача %s: старт", name)
         try:
             result = await func()
-            logger.info("задача %s: готово — %s", name, result)
+            logger.log(
+                logging.DEBUG if quiet else logging.INFO, "задача %s: готово — %s", name, result
+            )
         except Exception:  # noqa: BLE001 — иначе один сбой убивает всё расписание
             logger.exception("задача %s: сбой", name)
 
     runner.__name__ = f"job_{name}"
     return runner
+
+
+def only_on_primary(name: str, func):
+    """Обёртка: задача выполняется лишь на главном узле."""
+
+    async def guard():
+        if not await is_primary():
+            logger.debug("задача %s пропущена: узел в резерве", name)
+            return "пропущено: узел в резерве"
+        return await func()
+
+    return guarded(name, guard)
 
 
 async def sync_storage() -> dict:
@@ -125,6 +144,21 @@ def build_scheduler() -> AsyncIOScheduler:
         IntervalTrigger(minutes=settings.storage_sync_interval_minutes, timezone=tz),
         id="storage_sync",
     )
+
+    # Сторожа кластера — единственные задачи, которые обязаны работать и на
+    # резерве: именно резерв замечает смерть главного и перехватывает работу.
+    if settings.peer_url:
+        scheduler.add_job(
+            guarded("peer_watch", failover.watch_peer),
+            IntervalTrigger(seconds=30, timezone=tz),
+            id="peer_watch",
+        )
+    if settings.sync_replication:
+        scheduler.add_job(
+            guarded("replication_guard", failover.guard_replication),
+            IntervalTrigger(seconds=30, timezone=tz),
+            id="replication_guard",
+        )
     return scheduler
 
 
