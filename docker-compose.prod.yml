@@ -35,6 +35,21 @@ services:
       # client actually opens, otherwise they lead to localhost.
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
       HEALTH_FRONTEND_BASE: http://frontend:80
+      # Хранилище вложений: local (диск) или s3 (два бакета).
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_PREFIX: ${S3_PREFIX:-files/}
+      S3_PRIMARY_LABEL: ${S3_PRIMARY_LABEL:-S3 основной}
+      S3_PRIMARY_ENDPOINT: ${S3_PRIMARY_ENDPOINT:-}
+      S3_PRIMARY_REGION: ${S3_PRIMARY_REGION:-}
+      S3_PRIMARY_BUCKET: ${S3_PRIMARY_BUCKET:-}
+      S3_PRIMARY_ACCESS_KEY: ${S3_PRIMARY_ACCESS_KEY:-}
+      S3_PRIMARY_SECRET_KEY: ${S3_PRIMARY_SECRET_KEY:-}
+      S3_MIRROR_LABEL: ${S3_MIRROR_LABEL:-S3 зеркало}
+      S3_MIRROR_ENDPOINT: ${S3_MIRROR_ENDPOINT:-}
+      S3_MIRROR_REGION: ${S3_MIRROR_REGION:-}
+      S3_MIRROR_BUCKET: ${S3_MIRROR_BUCKET:-}
+      S3_MIRROR_ACCESS_KEY: ${S3_MIRROR_ACCESS_KEY:-}
+      S3_MIRROR_SECRET_KEY: ${S3_MIRROR_SECRET_KEY:-}
     volumes:
       - uploads:/var/lib/ibra/uploads
     depends_on:
@@ -42,6 +57,48 @@ services:
         condition: service_healthy
       docker-socket-proxy:
         condition: service_started
+
+  # Фоновый воркер: часовые и суточные бэкапы, чистка по сроку хранения,
+  # ночная проверка копии восстановлением и сверка двух S3-бакетов.
+  # Поднимается на обоих серверах кластера, но работает только тот, чья база
+  # сейчас главная (проверка `pg_is_in_recovery()`), — двойных прогонов нет.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    entrypoint: []
+    command: python -m app.workers.scheduler
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-ibra_orders}
+      SESSION_SECRET: ${SESSION_SECRET}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      UPLOAD_DIR: /var/lib/ibra/uploads
+      BACKUP_DIR: /var/lib/ibra/backups
+      BACKUP_TIMEZONE: ${BACKUP_TIMEZONE:-Europe/Moscow}
+      BACKUP_HOURLY_RETENTION_DAYS: ${BACKUP_HOURLY_RETENTION_DAYS:-7}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      S3_PREFIX: ${S3_PREFIX:-files/}
+      S3_PRIMARY_LABEL: ${S3_PRIMARY_LABEL:-S3 основной}
+      S3_PRIMARY_ENDPOINT: ${S3_PRIMARY_ENDPOINT:-}
+      S3_PRIMARY_REGION: ${S3_PRIMARY_REGION:-}
+      S3_PRIMARY_BUCKET: ${S3_PRIMARY_BUCKET:-}
+      S3_PRIMARY_ACCESS_KEY: ${S3_PRIMARY_ACCESS_KEY:-}
+      S3_PRIMARY_SECRET_KEY: ${S3_PRIMARY_SECRET_KEY:-}
+      S3_MIRROR_LABEL: ${S3_MIRROR_LABEL:-S3 зеркало}
+      S3_MIRROR_ENDPOINT: ${S3_MIRROR_ENDPOINT:-}
+      S3_MIRROR_REGION: ${S3_MIRROR_REGION:-}
+      S3_MIRROR_BUCKET: ${S3_MIRROR_BUCKET:-}
+      S3_MIRROR_ACCESS_KEY: ${S3_MIRROR_ACCESS_KEY:-}
+      S3_MIRROR_SECRET_KEY: ${S3_MIRROR_SECRET_KEY:-}
+    volumes:
+      - uploads:/var/lib/ibra/uploads
+      - backups:/var/lib/ibra/backups
+    depends_on:
+      db:
+        condition: service_healthy
 
   # Read-only прокси к Docker API — даёт админке («Логи процессов») доступ к
   # РЕАЛЬНЫМ логам контейнеров (`docker logs`), не монтируя docker.sock в сам
@@ -86,3 +143,4 @@ services:
 volumes:
   pgdata:
   uploads:
+  backups:

@@ -63,6 +63,22 @@ class Settings(BaseSettings):
     s3_mirror_access_key: str = ""
     s3_mirror_secret_key: str = ""
 
+    # Резервное копирование. Часовые копии живут ограниченный срок,
+    # суточные — постоянные и чисткой не затрагиваются.
+    backup_enabled: bool = True
+    backup_dir: str = "./backups"
+    backup_prefix: str = "backups/"
+    backup_hourly_retention_days: int = 7
+    backup_timezone: str = "Europe/Moscow"
+    backup_hourly_minute: int = 5
+    backup_daily_hour: int = 3
+    backup_daily_minute: int = 15
+    # Ночная проверка: свежий дамп разворачивается в отдельную базу.
+    backup_verify_enabled: bool = True
+    backup_verify_database: str = "ibra_backup_verify"
+    # Как часто фоновый воркер сверяет содержимое двух S3-бакетов.
+    storage_sync_interval_minutes: int = 15
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"

@@ -1,3 +1,4 @@
+from app.models.backup_run import BackupRun
 from app.models.client import Client
 from app.models.ledger_entry import LedgerEntry
 from app.models.logistics import Logistics, LogisticsItem
@@ -14,6 +15,7 @@ from app.models.telegram_group import ClientTelegramGroup, TelegramGroup
 from app.models.user import User
 
 __all__ = [
+    "BackupRun",
     "Client",
     "ClientTelegramGroup",
     "LedgerEntry",

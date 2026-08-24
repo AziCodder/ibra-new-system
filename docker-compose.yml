@@ -34,6 +34,27 @@ services:
       docker-socket-proxy:
         condition: service_started
 
+  # Фоновый воркер: бэкапы по расписанию и сверка двух S3-бакетов.
+  # Отдельный процесс, а не поток внутри API: долгая задача (pg_dump,
+  # проверка восстановлением) не должна конкурировать с обработкой запросов.
+  # Задачи выполняются только на главном узле — воркер сам спрашивает у БД,
+  # не реплика ли она.
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    command: python -m app.workers.scheduler
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ibra_orders
+      BACKUP_DIR: /var/lib/ibra/backups
+    volumes:
+      - ./backend:/app
+      - backups:/var/lib/ibra/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
   # Read-only прокси к Docker API — даёт админке («Логи процессов») доступ к
   # РЕАЛЬНЫМ логам контейнеров (`docker logs`), не монтируя docker.sock в сам
   # backend. Разрешены только GET /containers/json и /containers/{id}/logs
@@ -64,3 +85,4 @@ services:
 
 volumes:
   pgdata:
+  backups:
