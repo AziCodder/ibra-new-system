@@ -66,7 +66,9 @@ class BackupRun(Base):
     )
     verify_detail: Mapped[str] = mapped_column(Text, default="")
 
-    # Откат системы на эту копию: когда, чем закончился и что именно сделано.
+    # Откат системы на эту копию. ``restored_at`` — время последней попытки
+    # (в том числе неудачной): по нему видно зависший откат. Чем всё
+    # закончилось, говорит ``restore_status``.
     restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     restore_status: Mapped[BackupStatus | None] = mapped_column(
         Enum(BackupStatus, name="backup_status"), nullable=True

@@ -30,6 +30,7 @@ class BackupRunOut(BaseModel):
     restore_status: str | None
     restore_detail: str
     expires_at: datetime | None
+    stalled: bool
 
 
 class BackupSummaryOut(BaseModel):

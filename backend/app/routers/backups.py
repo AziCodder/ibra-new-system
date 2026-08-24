@@ -63,6 +63,7 @@ def _serialize(run: BackupRun) -> dict:
         "restore_status": run.restore_status.value if run.restore_status else None,
         "restore_detail": run.restore_detail,
         "expires_at": expires_at,
+        "stalled": backup.is_stalled(run),
     }
 
 

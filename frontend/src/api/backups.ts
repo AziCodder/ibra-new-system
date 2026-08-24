@@ -33,6 +33,8 @@ export interface BackupRun {
   restore_detail: string
   /** Когда временную копию удалит автоматика. У постоянных — null. */
   expires_at: string | null
+  /** Операция числится выполняющейся слишком долго — процесс оборвался. */
+  stalled: boolean
 }
 
 export interface BackupBrief {

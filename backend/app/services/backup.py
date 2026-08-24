@@ -44,6 +44,23 @@ logger = logging.getLogger(__name__)
 # пропавшие пользователи — признак того, что копия непригодна.
 VERIFY_TABLES = ("users", "orders", "clients")
 
+# Через сколько «снимается…» или «идёт откат…» считать операцию оборвавшейся.
+# Процесс мог умереть, не успев дописать результат (перезапуск контейнера,
+# разрыв соединения) — и тогда строка висела бы в этом состоянии вечно,
+# блокируя кнопки. Порог с большим запасом: дамп большой базы идёт минутами.
+STUCK_AFTER = timedelta(minutes=30)
+
+
+def is_stalled(run: BackupRun, *, now: datetime | None = None) -> bool:
+    """Операция помечена выполняющейся, но уже слишком давно."""
+    moment = now or _now()
+    if run.status == BackupStatus.running:
+        return moment - run.started_at > STUCK_AFTER
+    if run.restore_status == BackupStatus.running:
+        started = run.restored_at or run.started_at
+        return moment - started > STUCK_AFTER
+    return False
+
 
 class BackupError(Exception):
     pass
@@ -389,6 +406,21 @@ async def restore(run_id: int) -> dict:
     if in_recovery:
         return {"status": "failed", "detail": "узел в резерве: откат делается только на главном"}
 
+    # Два отката одновременно — гарантированный хаос: каждый подменяет базу
+    # под другим. Зависшая (давно брошенная) попытка помехой не считается.
+    now = _now()
+    async with async_session_factory() as session:
+        others = (
+            await session.execute(
+                select(BackupRun).where(
+                    BackupRun.restore_status == BackupStatus.running,
+                    BackupRun.id != run_id,
+                )
+            )
+        ).scalars()
+        if any(not is_stalled(other, now=now) for other in others):
+            return {"status": "busy", "detail": "откат уже выполняется"}
+
     await _set_restore_state(run_id, BackupStatus.running, "откат начат")
 
     safety = await create(BackupKind.manual, label=f"перед откатом: {title}"[:200])
@@ -404,22 +436,26 @@ async def restore(run_id: int) -> dict:
         logger.error("откат на %s не удался: %s", title, exc)
         return {"status": "failed", "detail": str(exc)}
 
-    await _set_restore_state(run_id, BackupStatus.ok, detail, restored=True)
+    await _set_restore_state(run_id, BackupStatus.ok, detail)
     logger.warning("выполнен откат базы на копию %s (%s)", title, detail)
     return {"status": "ok", "id": run_id, "title": title, "detail": detail, "safety_id": safety["id"]}
 
 
-async def _set_restore_state(
-    run_id: int, status: BackupStatus, detail: str, *, restored: bool = False
-) -> None:
+async def _set_restore_state(run_id: int, status: BackupStatus, detail: str) -> None:
+    """Записать состояние отката.
+
+    ``restored_at`` — время последней попытки, а не только удачной: по нему
+    видно, что «идёт откат…» висит подозрительно давно и процесс, скорее
+    всего, оборвался, не успев дописать результат. Чем всё кончилось,
+    говорит ``restore_status``.
+    """
     async with async_session_factory() as session:
         run = await session.get(BackupRun, run_id)
         if run is None:
             return
         run.restore_status = status
         run.restore_detail = detail[:1000]
-        if restored:
-            run.restored_at = _now()
+        run.restored_at = _now()
         await session.commit()
 
 

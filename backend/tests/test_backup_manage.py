@@ -185,8 +185,9 @@ async def test_restore_aborts_when_the_safety_copy_fails(clean_runs, fake_dump, 
     assert result["status"] == "failed"
     assert fake_swap == []  # до подмены базы дело не дошло
     run = await _row(target["id"])
+    # Попытка зафиксирована, но её итог — провал: «откат выполнен» не про неё.
     assert run.restore_status == BackupStatus.failed
-    assert run.restored_at is None
+    assert run.restored_at is not None
 
 
 @pytest.mark.asyncio
@@ -219,6 +220,43 @@ async def test_restore_refuses_a_failed_copy(clean_runs, fake_dump, buckets, fak
 
     assert result["status"] == "failed"
     assert fake_swap == []
+
+
+@pytest.mark.asyncio
+async def test_two_restores_at_once_are_refused(clean_runs, fake_dump, buckets, fake_swap):
+    """Второй откат подменил бы базу под первым — так делать нельзя."""
+    first = await backup.create(BackupKind.manual, "Первая")
+    second = await backup.create(BackupKind.manual, "Вторая")
+    await backup._set_restore_state(first["id"], BackupStatus.running, "откат начат")
+
+    result = await backup.restore(second["id"])
+
+    assert result["status"] == "busy"
+    assert fake_swap == []
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_restore_does_not_block_forever(clean_runs, fake_dump, buckets, fake_swap):
+    """Оборвавшийся откат нельзя считать «выполняющимся» вечно.
+
+    Иначе одна такая строка навсегда запирает кнопки в админке.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    stuck = await backup.create(BackupKind.manual, "Зависшая")
+    fresh = await backup.create(BackupKind.manual, "Свежая")
+    await backup._set_restore_state(stuck["id"], BackupStatus.running, "откат начат")
+    async with async_session_factory() as session:
+        row = await session.get(BackupRun, stuck["id"])
+        row.restored_at = datetime.now(UTC) - timedelta(hours=3)
+        await session.commit()
+    await engine.dispose()
+
+    assert backup.is_stalled(await _row(stuck["id"])) is True
+    assert backup.is_stalled(await _row(fresh["id"])) is False
+
+    # И новый откат такая строка блокировать не должна.
+    assert (await backup.restore(fresh["id"]))["status"] == "ok"
 
 
 @pytest.mark.asyncio

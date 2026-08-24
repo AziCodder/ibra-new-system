@@ -702,7 +702,11 @@ function BackupsTab() {
 
   // Снятие копии и откат идут фоном: пока хоть одна операция в работе,
   // список обновляется сам, чтобы не нажимать «обновить» вручную.
-  const busy = (data?.items ?? []).some((b) => b.status === 'running' || b.restore_status === 'running')
+  // Оборвавшиеся операции (stalled) в расчёт не берём — иначе одна такая
+  // строка навсегда заблокировала бы кнопки и опрос крутился бы впустую.
+  const busy = (data?.items ?? []).some(
+    (b) => !b.stalled && (b.status === 'running' || b.restore_status === 'running'),
+  )
   useEffect(() => {
     if (!busy) return
     const id = setInterval(() => refetch(), 3000)
@@ -856,7 +860,7 @@ function BackupsTab() {
                 <tr key={run.id}>
                   <td>
                     <div className="text-sm" style={{ color: 'var(--color-text)' }}>{run.title}</div>
-                    {run.restored_at && (
+                    {run.restore_status === 'ok' && run.restored_at && (
                       <div className="text-xs" style={{ color: 'var(--color-muted)' }}>
                         откат выполнен {fmtDateTime(run.restored_at)}
                       </div>
@@ -876,7 +880,14 @@ function BackupsTab() {
                     </div>
                   </td>
                   <td className="text-sm">
-                    {run.status === 'running' ? (
+                    {run.stalled ? (
+                      <span
+                        style={{ color: 'var(--color-danger)' }}
+                        title="Операция оборвалась и результат не записан. Проверьте состояние базы и повторите."
+                      >
+                        прервано
+                      </span>
+                    ) : run.status === 'running' ? (
                       <span style={{ color: 'var(--color-warning)' }}>снимается…</span>
                     ) : run.status === 'failed' ? (
                       <span style={{ color: 'var(--color-danger)' }} title={run.error}>ошибка</span>
