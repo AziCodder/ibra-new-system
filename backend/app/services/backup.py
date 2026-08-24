@@ -30,10 +30,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 
 from app.core.config import settings
-from app.core.database import async_session_factory
+from app.core.database import async_session_factory, engine
 from app.models.backup_run import BackupKind, BackupRun, BackupStatus
 from app.models.stored_file import ReplicaState
 from app.services.s3 import S3Bucket, S3Error
@@ -51,6 +51,32 @@ class BackupError(Exception):
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+# Имя копии задаёт человек и пишет его по-русски, а ключ объекта в бакете
+# должен оставаться пригодным для URL и для просмотра «снаружи» приложения.
+_TRANSLIT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
+    "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
+    "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u",
+    "ф": "f", "х": "h", "ц": "c", "ч": "ch", "ш": "sh", "щ": "sch",
+    "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def _slugify(label: str, limit: int = 40) -> str:
+    out = []
+    for char in label.strip().lower():
+        if char in _TRANSLIT:
+            out.append(_TRANSLIT[char])
+        elif char.isascii() and char.isalnum():
+            out.append(char)
+        elif char in " _-":
+            out.append("-")
+    slug = "".join(out).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug[:limit].strip("-")
 
 
 def parse_database_url(url: str) -> dict[str, str]:
@@ -113,7 +139,7 @@ def backup_buckets() -> list[S3Bucket]:
 # ─────────────────────────────────────────────────────────────── снятие копии
 
 
-async def create(kind: BackupKind = BackupKind.hourly) -> dict:
+async def create(kind: BackupKind = BackupKind.hourly, label: str = "") -> dict:
     """Снять копию базы и отправить её в оба хранилища."""
     if not settings.backup_enabled:
         return {"enabled": False}
@@ -123,7 +149,8 @@ async def create(kind: BackupKind = BackupKind.hourly) -> dict:
     # Хвост из случайных символов: две копии, снятые в одну и ту же секунду
     # (например, ручная поверх часовой), иначе получили бы один ключ и
     # молча затёрли друг друга в бакете.
-    filename = f"ibra_{kind.value}_{stamp}_{uuid.uuid4().hex[:6]}.dump"
+    slug = _slugify(label)
+    filename = f"ibra_{kind.value}_{stamp}_{slug + '_' if slug else ''}{uuid.uuid4().hex[:6]}.dump"
     object_key = f"{kind.value}/{filename}"
     target_dir = Path(settings.backup_dir) / kind.value
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -132,6 +159,7 @@ async def create(kind: BackupKind = BackupKind.hourly) -> dict:
     async with async_session_factory() as session:
         run = BackupRun(
             kind=kind,
+            label=label.strip()[:200],
             status=BackupStatus.running,
             object_key=object_key,
             local_path=str(local_path),
@@ -285,6 +313,216 @@ async def cleanup(retention_days: int | None = None) -> dict:
     return {"retention_days": days, "removed": removed, "failed": failed}
 
 
+# ──────────────────────────────────────────────────────── удаление копии вручную
+
+
+async def remove(run_id: int) -> dict:
+    """Удалить копию из обоих бакетов и с диска.
+
+    Если хотя бы один бакет не подтвердил удаление, копия НЕ помечается
+    удалённой: иначе объект остался бы лежать в хранилище, а система
+    считала бы его стёртым.
+    """
+    async with async_session_factory() as session:
+        run = await session.get(BackupRun, run_id)
+        if run is None or run.deleted_at is not None:
+            return {"status": "not_found"}
+        if run.status == BackupStatus.running:
+            return {"status": "busy", "detail": "копия ещё снимается"}
+        object_key, local_path, title = run.object_key, run.local_path, run.title
+
+    errors = []
+    for bucket in backup_buckets():
+        try:
+            await bucket.delete(object_key)
+        except S3Error as exc:
+            errors.append(f"{bucket.config.label}: {exc}")
+    if local_path:
+        Path(local_path).unlink(missing_ok=True)
+
+    async with async_session_factory() as session:
+        run = await session.get(BackupRun, run_id)
+        if run is None:
+            return {"status": "not_found"}
+        if errors:
+            run.error = "; ".join(errors)[:1000]
+            await session.commit()
+            return {"status": "failed", "detail": run.error}
+        run.deleted_at = _now()
+        run.local_path = ""
+        await session.commit()
+
+    logger.info("копия %s удалена администратором", title)
+    return {"status": "ok", "id": run_id, "title": title}
+
+
+# ─────────────────────────────────────────────────────────────────── откат
+
+
+async def restore(run_id: int) -> dict:
+    """Откатить базу на выбранную копию.
+
+    Операция необратима для текущих данных, поэтому построена так:
+
+    1. сначала снимается страховочная копия текущего состояния — без неё
+       откат не начинается вовсе;
+    2. дамп разворачивается в отдельную базу, а не поверх рабочей: пока идёт
+       восстановление, система продолжает работать на старых данных;
+    3. подмена происходит переименованием баз — это мгновенно, и прежняя
+       база остаётся рядом под именем ``..._before_restore_<дата>``, так что
+       ошибочный откат можно отыграть назад;
+    4. журнал копий и реестр файлов переносятся в восстановленную базу,
+       иначе откат стёр бы историю бэкапов вместе с данными — включая
+       только что снятую страховочную копию.
+    """
+    async with async_session_factory() as session:
+        target = await session.get(BackupRun, run_id)
+        if target is None or target.deleted_at is not None:
+            return {"status": "not_found"}
+        if target.status != BackupStatus.ok:
+            return {"status": "failed", "detail": "копия снята с ошибкой, откат невозможен"}
+        title = target.title
+        object_key = target.object_key
+        local_path = target.local_path
+        in_recovery = (await session.execute(text("SELECT pg_is_in_recovery()"))).scalar()
+
+    if in_recovery:
+        return {"status": "failed", "detail": "узел в резерве: откат делается только на главном"}
+
+    await _set_restore_state(run_id, BackupStatus.running, "откат начат")
+
+    safety = await create(BackupKind.manual, label=f"перед откатом: {title}"[:200])
+    if safety.get("status") != "ok":
+        detail = f"страховочная копия не снята ({safety.get('error', 'причина неизвестна')}) — откат отменён"
+        await _set_restore_state(run_id, BackupStatus.failed, detail)
+        return {"status": "failed", "detail": detail}
+
+    try:
+        detail = await _swap_in_backup(object_key, local_path)
+    except (BackupError, S3Error, OSError) as exc:
+        await _set_restore_state(run_id, BackupStatus.failed, str(exc)[:1000])
+        logger.error("откат на %s не удался: %s", title, exc)
+        return {"status": "failed", "detail": str(exc)}
+
+    await _set_restore_state(run_id, BackupStatus.ok, detail, restored=True)
+    logger.warning("выполнен откат базы на копию %s (%s)", title, detail)
+    return {"status": "ok", "id": run_id, "title": title, "detail": detail, "safety_id": safety["id"]}
+
+
+async def _set_restore_state(
+    run_id: int, status: BackupStatus, detail: str, *, restored: bool = False
+) -> None:
+    async with async_session_factory() as session:
+        run = await session.get(BackupRun, run_id)
+        if run is None:
+            return
+        run.restore_status = status
+        run.restore_detail = detail[:1000]
+        if restored:
+            run.restored_at = _now()
+        await session.commit()
+
+
+async def _swap_in_backup(object_key: str, local_path: str) -> str:
+    conn = parse_database_url(settings.database_url)
+    env = _pg_env(conn)
+    admin = ["-h", conn["host"], "-p", conn["port"], "-U", conn["user"], "-d", "postgres"]
+    live = conn["dbname"]
+    stamp = _now().strftime("%Y%m%d_%H%M%S")
+    tmp_db = f"{live}_restore_tmp"
+    archive_db = f"{live}_before_restore_{stamp}"
+
+    workdir = Path(settings.backup_dir) / "restore"
+    workdir.mkdir(parents=True, exist_ok=True)
+    dump_path = workdir / Path(object_key).name
+    journal_path = workdir / f"journal_{stamp}.sql"
+
+    data = await _fetch_object(object_key, local_path)
+    dump_path.write_bytes(data)
+
+    try:
+        # 1. Разворачиваем копию рядом — рабочая база пока не тронута.
+        await _run_tool(["psql", *admin, "-c", f'DROP DATABASE IF EXISTS "{tmp_db}"'], env)
+        await _run_tool(["psql", *admin, "-c", f'CREATE DATABASE "{tmp_db}"'], env)
+        await _run_tool(
+            [
+                "pg_restore",
+                "-h", conn["host"], "-p", conn["port"], "-U", conn["user"],
+                "-d", tmp_db, "--no-owner", "--no-privileges", str(dump_path),
+            ],
+            env,
+        )
+
+        # 2. Забираем журнал копий и реестр файлов из рабочей базы: они
+        #    описывают хранилище, а не бизнес-данные, и откату не подлежат.
+        await _run_tool(
+            [
+                "pg_dump",
+                "-h", conn["host"], "-p", conn["port"], "-U", conn["user"],
+                "-d", live, "--data-only",
+                "-t", "backup_runs", "-t", "stored_files",
+                "-f", str(journal_path),
+            ],
+            env,
+        )
+
+        # 3. Подмена. Закрываем новые подключения, рвём текущие и меняем имена.
+        #    Несколько секунд приложение отвечает ошибкой — это цена отката.
+        await _run_tool(
+            ["psql", *admin, "-c", f'ALTER DATABASE "{live}" WITH ALLOW_CONNECTIONS false'], env
+        )
+        await _run_tool(
+            [
+                "psql", *admin, "-c",
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                f"WHERE datname = '{live}' AND pid <> pg_backend_pid()",
+            ],
+            env,
+        )
+        await _run_tool(["psql", *admin, "-c", f'ALTER DATABASE "{live}" RENAME TO "{archive_db}"'], env)
+        await _run_tool(
+            ["psql", *admin, "-c", f'ALTER DATABASE "{archive_db}" WITH ALLOW_CONNECTIONS true'], env
+        )
+        await _run_tool(["psql", *admin, "-c", f'ALTER DATABASE "{tmp_db}" RENAME TO "{live}"'], env)
+
+        # Соединения этого процесса убиты вместе со всеми остальными, но
+        # в пуле они ещё числятся живыми. Выбрасываем их, иначе следующий же
+        # запрос к базе уйдёт в закрытый сокет.
+        await engine.dispose()
+
+        # 4. Возвращаем журнал и реестр в восстановленную базу.
+        restore_db = ["-h", conn["host"], "-p", conn["port"], "-U", conn["user"], "-d", live]
+        await _run_tool(
+            ["psql", *restore_db, "-c", "TRUNCATE backup_runs, stored_files"], env
+        )
+        await _run_tool(["psql", *restore_db, "-f", str(journal_path)], env)
+        await _run_tool(
+            [
+                "psql", *restore_db, "-c",
+                "SELECT setval(pg_get_serial_sequence('backup_runs','id'), "
+                "COALESCE((SELECT MAX(id) FROM backup_runs), 1))",
+            ],
+            env,
+        )
+    finally:
+        dump_path.unlink(missing_ok=True)
+        journal_path.unlink(missing_ok=True)
+
+    return f"база восстановлена из {object_key}; прежняя сохранена как {archive_db}"
+
+
+async def _fetch_object(object_key: str, local_path: str = "") -> bytes:
+    """Тело копии: основной бакет → зеркало → локальный файл."""
+    for bucket in backup_buckets():
+        try:
+            return await bucket.get(object_key)
+        except S3Error as exc:
+            logger.warning("копия %s недоступна в %s: %s", object_key, bucket.config.label, exc)
+    if local_path and Path(local_path).exists():
+        return Path(local_path).read_bytes()
+    raise BackupError("копия недоступна ни в одном хранилище")
+
+
 # ────────────────────────────────────────────────────── проверка восстановлением
 
 
@@ -339,15 +577,7 @@ async def verify_last(kind: BackupKind = BackupKind.daily) -> dict:
 
 
 async def _fetch(run: BackupRun) -> bytes:
-    """Взять тело копии: сперва из основного бакета, потом из зеркала, потом с диска."""
-    for bucket in backup_buckets():
-        try:
-            return await bucket.get(run.object_key)
-        except S3Error as exc:
-            logger.warning("копия %s недоступна в %s: %s", run.object_key, bucket.config.label, exc)
-    if run.local_path and Path(run.local_path).exists():
-        return Path(run.local_path).read_bytes()
-    raise BackupError("копия недоступна ни в одном хранилище")
+    return await _fetch_object(run.object_key, run.local_path)
 
 
 async def _restore_and_count(conn: dict[str, str], scratch: str, dump_path: Path) -> str:
@@ -383,10 +613,14 @@ async def _restore_and_count(conn: dict[str, str], scratch: str, dump_path: Path
 # ────────────────────────────────────────────────────────────── для админки
 
 
-async def history(limit: int = 50) -> list[BackupRun]:
+async def history(limit: int = 100) -> list[BackupRun]:
+    """Список живых копий: постоянные и временные, ещё не удалённые."""
     async with async_session_factory() as session:
         result = await session.execute(
-            select(BackupRun).order_by(desc(BackupRun.started_at)).limit(limit)
+            select(BackupRun)
+            .where(BackupRun.deleted_at.is_(None))
+            .order_by(desc(BackupRun.started_at))
+            .limit(limit)
         )
         return list(result.scalars())
 

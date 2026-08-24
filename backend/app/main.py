@@ -12,6 +12,7 @@ from app.core.logging_config import setup_logging
 from app.middleware.request_logging import RequestLoggingMiddleware, unhandled_exception_handler
 from app.routers.action_log import router as action_log_router
 from app.routers.auth import router as auth_router
+from app.routers.backups import router as backups_router
 from app.routers.clients import router as clients_router
 from app.routers.files import router as files_router
 from app.routers.ledger_entries import router as ledger_entries_router
@@ -74,6 +75,7 @@ app.add_middleware(
 
 app.include_router(action_log_router)
 app.include_router(auth_router)
+app.include_router(backups_router)
 app.include_router(clients_router)
 app.include_router(files_router)
 app.include_router(ledger_entries_router)

@@ -25,9 +25,14 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ibra_orders
+      # Тот же каталог, что у воркера: ручной бэкап из админки и бэкап по
+      # расписанию должны лежать в одном месте, иначе откат не найдёт файл,
+      # снятый «не тем» контейнером.
+      BACKUP_DIR: /var/lib/ibra/backups
     volumes:
       - ./backend:/app
       - ./:/workspace:ro
+      - backups:/var/lib/ibra/backups
     depends_on:
       db:
         condition: service_healthy

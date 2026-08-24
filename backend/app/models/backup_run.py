@@ -35,6 +35,9 @@ class BackupRun(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[BackupKind] = mapped_column(Enum(BackupKind, name="backup_kind"))
+    # Имя, которое задал администратор при ручном создании. Автоматические
+    # копии остаются без имени и показываются по дате.
+    label: Mapped[str] = mapped_column(String(200), default="")
     status: Mapped[BackupStatus] = mapped_column(
         Enum(BackupStatus, name="backup_status"), default=BackupStatus.running
     )
@@ -63,10 +66,26 @@ class BackupRun(Base):
     )
     verify_detail: Mapped[str] = mapped_column(Text, default="")
 
-    # Проставляется только для часовых копий при чистке по сроку хранения.
-    # Суточные не удаляются никогда — у них это поле остаётся пустым.
+    # Откат системы на эту копию: когда, чем закончился и что именно сделано.
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    restore_status: Mapped[BackupStatus | None] = mapped_column(
+        Enum(BackupStatus, name="backup_status"), nullable=True
+    )
+    restore_detail: Mapped[str] = mapped_column(Text, default="")
+
+    # Проставляется при чистке часовых копий по сроку хранения и при удалении
+    # копии администратором. Суточные и ручные автоматика не трогает.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @property
     def stored_copies(self) -> int:
         return sum(1 for s in (self.primary_state, self.mirror_state) if s == ReplicaState.ok)
+
+    @property
+    def permanent(self) -> bool:
+        """Постоянная копия: суточные и все ручные хранятся бессрочно."""
+        return self.kind in (BackupKind.daily, BackupKind.manual)
+
+    @property
+    def title(self) -> str:
+        return self.label or self.object_key.rsplit("/", 1)[-1]

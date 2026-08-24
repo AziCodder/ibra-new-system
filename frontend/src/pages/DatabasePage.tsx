@@ -7,6 +7,7 @@ import { fetchNotificationLog } from '../api/notifications'
 import { fetchActionLog } from '../api/actionLog'
 import { fetchSystemHealth, type HealthStatus } from '../api/systemHealth'
 import { fetchLogSources, fetchProcessLogs, type LogLine, type LogSource } from '../api/processLogs'
+import { fetchBackups, createBackup, deleteBackup, restoreBackup, type BackupRun } from '../api/backups'
 import { fetchTelegramGroups, setTelegramGroupClients, deleteTelegramGroup, type TelegramGroupAdmin } from '../api/telegramGroups'
 import { useAuth } from '../contexts/AuthContext'
 import ErrorState from '../components/ErrorState'
@@ -14,13 +15,13 @@ import { SkeletonTableRows } from '../components/Skeleton'
 import {
   Plus, Link, X, Copy, Check, Pencil, Trash2, Save,
   RefreshCw, Server, Database as DatabaseIcon, HardDrive, Globe,
-  CircleCheck, TriangleAlert, CircleX, Search, Pause, Play, Download,
+  CircleCheck, TriangleAlert, CircleX, Search, Pause, Play, Download, History,
 } from 'lucide-react'
 import Tag, { type TagColor } from '../components/Tag'
 import PageHeader from '../components/PageHeader'
 import type { User } from '../api/auth'
 
-type Tab = 'users' | 'clients' | 'suppliers' | 'telegram' | 'notifications' | 'action-log' | 'health' | 'process-logs'
+type Tab = 'users' | 'clients' | 'suppliers' | 'telegram' | 'notifications' | 'action-log' | 'health' | 'process-logs' | 'backups'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Пользователи' },
@@ -31,6 +32,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'action-log', label: 'Журнал действий' },
   { key: 'health', label: 'Состояние системы' },
   { key: 'process-logs', label: 'Логи процессов' },
+  { key: 'backups', label: 'Бэкапы' },
 ]
 
 const INPUT_STYLE = {
@@ -664,6 +666,261 @@ function ActionLogTab() {
   )
 }
 
+// ── Backups ──────────────────────────────────────────────────────────────
+
+const KIND_LABEL: Record<BackupRun['kind'], string> = {
+  hourly: 'Часовая',
+  daily: 'Суточная',
+  manual: 'Ручная',
+}
+const KIND_COLOR: Record<BackupRun['kind'], TagColor> = {
+  hourly: 'default',
+  daily: 'blue',
+  manual: 'purple',
+}
+
+function fmtSize(bytes: number): string {
+  if (!bytes) return '—'
+  const mb = bytes / (1024 * 1024)
+  return mb >= 1 ? `${mb.toFixed(1)} МБ` : `${Math.max(1, Math.round(bytes / 1024))} КБ`
+}
+
+function fmtDateTime(iso?: string | null): string {
+  return iso ? new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—'
+}
+
+function BackupsTab() {
+  const queryClient = useQueryClient()
+  const [name, setName] = useState('')
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey: ['backups'],
+    queryFn: fetchBackups,
+  })
+
+  // Снятие копии и откат идут фоном: пока хоть одна операция в работе,
+  // список обновляется сам, чтобы не нажимать «обновить» вручную.
+  const busy = (data?.items ?? []).some((b) => b.status === 'running' || b.restore_status === 'running')
+  useEffect(() => {
+    if (!busy) return
+    const id = setInterval(() => refetch(), 3000)
+    return () => clearInterval(id)
+  }, [busy, refetch])
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['backups'] })
+
+  const createMut = useMutation({
+    mutationFn: (label: string) => createBackup(label),
+    onSuccess: () => {
+      setName('')
+      setError('')
+      setNotice('Копия снимается — она появится в списке через несколько секунд.')
+      invalidate()
+    },
+    onError: (e: Error) => { setNotice(''); setError(e.message) },
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => deleteBackup(id),
+    onSuccess: () => { setError(''); setNotice('Копия удалена.'); invalidate() },
+    onError: (e: Error) => { setNotice(''); setError(e.message) },
+  })
+
+  const restoreMut = useMutation({
+    mutationFn: (id: number) => restoreBackup(id),
+    onSuccess: () => {
+      setError('')
+      setNotice('Откат запущен. Система на несколько секунд перестанет отвечать — это нормально, затем обновите страницу.')
+      invalidate()
+    },
+    onError: (e: Error) => { setNotice(''); setError(e.message) },
+  })
+
+  function askDelete(run: BackupRun) {
+    if (!window.confirm(`Удалить копию «${run.title}»? Файл будет стёрт из всех хранилищ, это действие нельзя отменить.`)) return
+    deleteMut.mutate(run.id)
+  }
+
+  function askRestore(run: BackupRun) {
+    const warning =
+      `ОТКАТ НА КОПИЮ «${run.title}» от ${fmtDateTime(run.started_at)}.\n\n` +
+      'Все данные, появившиеся после этого момента, исчезнут из системы.\n' +
+      'Перед откатом автоматически снимется страховочная копия текущего состояния, ' +
+      'а прежняя база сохранится рядом — вернуться назад можно.\n\n' +
+      'Продолжить?'
+    if (!window.confirm(warning)) return
+    // Второе подтверждение словом: откат необратим для текущих данных,
+    // и случайного двойного клика по «ОК» для него недостаточно.
+    const typed = window.prompt('Введите слово ОТКАТ заглавными буквами, чтобы подтвердить:')
+    if (typed !== 'ОТКАТ') {
+      if (typed !== null) setError('Откат отменён: подтверждение не совпало.')
+      return
+    }
+    restoreMut.mutate(run.id)
+  }
+
+  const summary = data?.summary
+
+  return (
+    <>
+      <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
+        <p className="text-sm" style={{ color: 'var(--color-muted)' }}>
+          Копии базы данных. Часовые хранятся {summary?.retention_days ?? 7} дней, суточные и ручные — постоянно
+          {summary && <> · {summary.storage}</>}
+        </p>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm cursor-pointer disabled:opacity-60"
+          style={{ background: 'transparent', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+        >
+          <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} /> Обновить
+        </button>
+      </div>
+
+      <div
+        className="rounded-[8px] p-4 mb-5 flex items-end gap-3 flex-wrap"
+        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)' }}
+      >
+        <div className="flex-1 min-w-[260px]">
+          <label className="block text-xs mb-1" style={{ color: 'var(--color-muted)' }}>
+            Имя копии
+          </label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && name.trim()) createMut.mutate(name.trim()) }}
+            maxLength={200}
+            placeholder="Например: перед правкой цен"
+            className="w-full rounded-md px-3 py-2 text-sm outline-none"
+            style={INPUT_STYLE}
+          />
+        </div>
+        <button
+          onClick={() => createMut.mutate(name.trim())}
+          disabled={createMut.isPending || !name.trim()}
+          className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50"
+          style={{ background: 'var(--color-primary)', color: '#fff' }}
+        >
+          <Plus size={15} /> Создать бэкап
+        </button>
+        <p className="text-xs w-full" style={{ color: 'var(--color-muted)' }}>
+          Копия, созданная вручную, хранится постоянно — автоматика её не удаляет.
+        </p>
+      </div>
+
+      {notice && (
+        <div className="rounded-[8px] p-3 mb-4 text-sm" style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div className="rounded-[8px] p-3 mb-4 text-sm" style={{ background: 'var(--color-danger-bg)', color: 'var(--color-danger)' }}>
+          {error}
+        </div>
+      )}
+      {summary?.verify && (
+        <p className="text-xs mb-4" style={{ color: 'var(--color-muted)' }}>
+          Последняя проверка восстановлением: {fmtDateTime(summary.verify.at)} —{' '}
+          <span style={{ color: summary.verify.status === 'ok' ? 'var(--color-success)' : 'var(--color-danger)' }}>
+            {summary.verify.status === 'ok' ? 'успешно' : 'провалена'}
+          </span>
+          {summary.verify.detail && <> · {summary.verify.detail}</>}
+        </p>
+      )}
+
+      {isLoading ? <SkeletonTableRows rows={5} /> : isError ? (
+        <ErrorState message="Не удалось загрузить список бэкапов" onRetry={() => refetch()} />
+      ) : !data?.items.length ? (
+        <div className="rounded-[8px] p-6 text-sm" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-card-border)', color: 'var(--color-muted)' }}>
+          Копий пока нет. Первая часовая появится в начале следующего часа, или создайте копию вручную.
+        </div>
+      ) : (
+        <div className="rounded-[8px] overflow-hidden" style={{ border: '1px solid var(--color-card-border)' }}>
+          <table className="rtable w-full">
+            <thead>
+              <tr>
+                <th>Копия</th>
+                <th>Тип</th>
+                <th>Создана</th>
+                <th>Размер</th>
+                <th>Хранение</th>
+                <th>Состояние</th>
+                <th style={{ width: 130 }}>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((run) => (
+                <tr key={run.id}>
+                  <td>
+                    <div className="text-sm" style={{ color: 'var(--color-text)' }}>{run.title}</div>
+                    {run.restored_at && (
+                      <div className="text-xs" style={{ color: 'var(--color-muted)' }}>
+                        откат выполнен {fmtDateTime(run.restored_at)}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <Tag color={KIND_COLOR[run.kind]}>{KIND_LABEL[run.kind]}</Tag>
+                  </td>
+                  <td className="text-sm" style={{ color: 'var(--color-muted)' }}>{fmtDateTime(run.started_at)}</td>
+                  <td className="text-sm" style={{ color: 'var(--color-muted)' }}>{fmtSize(run.size)}</td>
+                  <td className="text-sm" style={{ color: 'var(--color-muted)' }}>
+                    {run.permanent ? 'постоянно' : `до ${fmtDateTime(run.expires_at)}`}
+                    <div className="text-xs">
+                      {run.copies > 0
+                        ? `${run.copies} копи${run.copies === 1 ? 'я' : 'и'} в S3`
+                        : run.stored_locally ? 'на диске сервера' : 'нет файла'}
+                    </div>
+                  </td>
+                  <td className="text-sm">
+                    {run.status === 'running' ? (
+                      <span style={{ color: 'var(--color-warning)' }}>снимается…</span>
+                    ) : run.status === 'failed' ? (
+                      <span style={{ color: 'var(--color-danger)' }} title={run.error}>ошибка</span>
+                    ) : run.restore_status === 'running' ? (
+                      <span style={{ color: 'var(--color-warning)' }}>идёт откат…</span>
+                    ) : run.restore_status === 'failed' ? (
+                      <span style={{ color: 'var(--color-danger)' }} title={run.restore_detail}>откат не удался</span>
+                    ) : run.verify_status === 'ok' ? (
+                      <span style={{ color: 'var(--color-success)' }} title={run.verify_detail}>проверена</span>
+                    ) : run.verify_status === 'failed' ? (
+                      <span style={{ color: 'var(--color-danger)' }} title={run.verify_detail}>проверка провалена</span>
+                    ) : (
+                      <span style={{ color: 'var(--color-muted)' }}>готова</span>
+                    )}
+                  </td>
+                  <td>
+                    <div className="flex gap-1.5">
+                      <IconBtn
+                        title="Откатить систему на эту копию"
+                        onClick={() => askRestore(run)}
+                        disabled={run.status !== 'ok' || busy || restoreMut.isPending}
+                      >
+                        <History size={15} />
+                      </IconBtn>
+                      <IconBtn
+                        title="Удалить копию"
+                        danger
+                        onClick={() => askDelete(run)}
+                        disabled={run.status === 'running' || deleteMut.isPending}
+                      >
+                        <Trash2 size={15} />
+                      </IconBtn>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── System health ────────────────────────────────────────────────────────
 
 const STATUS_LABEL: Record<HealthStatus, string> = { ok: 'Работает', warn: 'Внимание', down: 'Сбой' }
@@ -1239,6 +1496,7 @@ export default function DatabasePage() {
       {tab === 'action-log' && <ActionLogTab />}
       {tab === 'health' && <SystemHealthTab />}
       {tab === 'process-logs' && <ProcessLogsTab />}
+      {tab === 'backups' && <BackupsTab />}
     </div>
   )
 }

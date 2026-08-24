@@ -30,6 +30,10 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost}
       UPLOAD_DIR: /var/lib/ibra/uploads
+      # Тот же каталог, что у воркера: ручной бэкап из админки и бэкап по
+      # расписанию должны лежать в одном месте, иначе откат не найдёт файл,
+      # снятый «не тем» контейнером.
+      BACKUP_DIR: /var/lib/ibra/backups
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       # Links in Telegram notifications point here — set it to the address the
       # client actually opens, otherwise they lead to localhost.
@@ -52,6 +56,7 @@ services:
       S3_MIRROR_SECRET_KEY: ${S3_MIRROR_SECRET_KEY:-}
     volumes:
       - uploads:/var/lib/ibra/uploads
+      - backups:/var/lib/ibra/backups
     depends_on:
       db:
         condition: service_healthy
