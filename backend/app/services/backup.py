@@ -180,7 +180,13 @@ async def create(kind: BackupKind = BackupKind.hourly, label: str = "") -> dict:
             status=BackupStatus.running,
             object_key=object_key,
             local_path=str(local_path),
-            node=socket.gethostname(),
+            # Какой узел снял копию. Берём имя из конфига (A/B), а не из
+            # hostname: внутри контейнера hostname — это идентификатор
+            # контейнера, он меняется при каждом пересоздании. В списке
+            # бэкапов вместо «на каком сервере снято» стояла бы случайная
+            # шестнадцатеричная строка — а после переключения это как раз
+            # первое, что нужно знать.
+            node=settings.node_name or socket.gethostname(),
         )
         session.add(run)
         await session.commit()
