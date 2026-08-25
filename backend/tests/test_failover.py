@@ -287,3 +287,161 @@ def test_fqdn_is_built_from_zone_and_record(monkeypatch):
 
     monkeypatch.setattr(settings, "dns_record", "@")
     assert dns_failover.fqdn() == "cargo-ibragim.ru"
+
+
+# ── асинхронная реплика (серверы в разных странах) ─────────────────────────
+
+
+@pytest.fixture
+def async_mode(monkeypatch):
+    """Режим NL + FI: синхронность выключена осознанно, сторожим отставание."""
+    monkeypatch.setattr(settings, "sync_replication", False)
+    monkeypatch.setattr(settings, "sync_degrade_after_seconds", 0)
+    monkeypatch.setattr(settings, "replication_lag_warn_seconds", 30)
+    monkeypatch.setattr(settings, "replication_lag_alert_seconds", 120)
+    failover.state.lag_alerted = False
+    sent = []
+    monkeypatch.setattr(failover, "_notify", lambda text: _record(sent, text))
+    return sent
+
+
+async def _record(sent, text):
+    sent.append(text)
+
+
+@pytest.mark.asyncio
+async def test_async_replica_within_limits_is_quiet(monkeypatch, async_mode):
+    """Отставание в пределах нормы — не повод будить людей."""
+    _stub(
+        monkeypatch,
+        role=cluster.PRIMARY,
+        replicas=[{"state": "streaming", "sync_state": "async", "lag_seconds": 0.4}],
+    )
+
+    result = await failover.guard_replication()
+
+    assert result["action"] == "ok"
+    assert result["lag_seconds"] == 0.4
+    assert async_mode == []
+
+
+@pytest.mark.asyncio
+async def test_async_replica_lagging_raises_alarm_once(monkeypatch, async_mode):
+    """Отставание больше порога — это размер будущей потери, о нём кричим.
+
+    Но ровно один раз: тревога каждые полминуты перестаёт восприниматься.
+    """
+    _stub(
+        monkeypatch,
+        role=cluster.PRIMARY,
+        replicas=[{"state": "streaming", "sync_state": "async", "lag_seconds": 300.0}],
+    )
+
+    results = [await failover.guard_replication() for _ in range(3)]
+
+    assert [r["action"] for r in results] == ["lagging"] * 3
+    assert len(async_mode) == 1
+    assert "300" in async_mode[0]
+
+
+@pytest.mark.asyncio
+async def test_async_replica_recovery_is_announced(monkeypatch, async_mode):
+    """После тревоги возвращение реплики должно быть слышно так же явно."""
+    _stub(
+        monkeypatch,
+        role=cluster.PRIMARY,
+        replicas=[{"state": "streaming", "sync_state": "async", "lag_seconds": 300.0}],
+    )
+    await failover.guard_replication()
+
+    _stub(
+        monkeypatch,
+        role=cluster.PRIMARY,
+        replicas=[{"state": "streaming", "sync_state": "async", "lag_seconds": 1.0}],
+    )
+    result = await failover.guard_replication()
+
+    assert result["action"] == "recovered"
+    assert len(async_mode) == 2
+    assert "норме" in async_mode[1]
+
+
+@pytest.mark.asyncio
+async def test_lost_replica_in_async_mode_is_reported(monkeypatch, async_mode):
+    """Асинхронный режим не отменяет главного: реплика должна быть.
+
+    Раньше при SYNC_REPLICATION=false сторож молчал вовсе — потеря реплики
+    не замечалась никем до самой аварии.
+    """
+    _stub(monkeypatch, role=cluster.PRIMARY, replicas=[])
+
+    first = await failover.guard_replication()
+    second = await failover.guard_replication()
+
+    assert first["action"] == "standby_missing"
+    assert second["action"] == "replica_lost"
+    assert len(async_mode) == 1
+    assert "одном экземпляре" in async_mode[0]
+
+
+@pytest.mark.asyncio
+async def test_async_guard_stays_idle_on_standby(monkeypatch, async_mode):
+    _stub(monkeypatch, role=cluster.STANDBY)
+
+    assert (await failover.guard_replication())["applicable"] is False
+    assert async_mode == []
+
+
+# ── оценка состояния кластера ──────────────────────────────────────────────
+
+
+def _state(**over):
+    base = {
+        "role": cluster.PRIMARY,
+        "read_only": False,
+        "sync_configured": False,
+        "replicas": [],
+        "lag_seconds": None,
+        "peer": {"alive": True},
+    }
+    return {**base, **over}
+
+
+def test_async_replica_in_step_is_healthy(monkeypatch):
+    """Асинхронный режим сам по себе — не тревога, если он выбран осознанно.
+
+    Иначе панель состояния горела бы жёлтым круглосуточно, и на неё
+    перестали бы смотреть.
+    """
+    monkeypatch.setattr(settings, "replication_lag_warn_seconds", 30)
+    status, detail = cluster.health(
+        _state(replicas=[{"sync_state": "async", "lag_seconds": 0.8}])
+    )
+
+    assert status == "ok"
+    assert "0.8" in detail
+
+
+def test_badly_lagging_async_replica_is_an_alarm(monkeypatch):
+    monkeypatch.setattr(settings, "replication_lag_alert_seconds", 120)
+    status, detail = cluster.health(
+        _state(replicas=[{"sync_state": "async", "lag_seconds": 600.0}])
+    )
+
+    assert status == "down"
+    assert "потеряется" in detail
+
+
+def test_missing_replica_is_an_alarm_even_in_async_mode():
+    """Реплики нет вовсе — данные на одном сервере, режим тут ни при чём."""
+    status, detail = cluster.health(_state(replicas=[]))
+
+    assert status == "down"
+    assert "на один сервер" in detail
+
+
+def test_single_server_without_cluster_is_not_an_alarm():
+    """Кластер не настроен — обещаний не давали, тревожить незачем."""
+    status, _ = cluster.health(_state(replicas=[], peer=None))
+
+    assert status == "warn"

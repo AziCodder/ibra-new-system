@@ -35,6 +35,10 @@ x-cluster-env: &cluster-env
   SYNC_REPLICATION: ${SYNC_REPLICATION:-true}
   SYNC_STANDBY_NAME: ${SYNC_STANDBY_NAME:-standby}
   SYNC_DEGRADE_AFTER_SECONDS: ${SYNC_DEGRADE_AFTER_SECONDS:-30}
+  # Пороги отставания реплики. В асинхронном режиме отставание — это размер
+  # возможной потери, поэтому оно должно быть видно и в админке, и в тревогах.
+  REPLICATION_LAG_WARN_SECONDS: ${REPLICATION_LAG_WARN_SECONDS:-30}
+  REPLICATION_LAG_ALERT_SECONDS: ${REPLICATION_LAG_ALERT_SECONDS:-120}
   DNS_PROVIDER: ${DNS_PROVIDER:-none}
   DNS_ZONE: ${DNS_ZONE:-cargo-ibragim.ru}
   DNS_RECORD: ${DNS_RECORD:-flow}

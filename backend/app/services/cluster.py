@@ -50,7 +50,12 @@ async def replicas() -> list[dict]:
         rows = await session.execute(
             text(
                 "SELECT application_name, state, sync_state, client_addr::text, "
-                "COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn), 0)::bigint AS lag_bytes "
+                "COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn), 0)::bigint AS lag_bytes, "
+                # replay_lag — насколько реплика отстала ПО ВРЕМЕНИ. В
+                # асинхронном режиме это и есть размер возможной потери, и
+                # объяснять его людям куда проще, чем байты WAL. NULL, когда
+                # записей не было вовсе (реплика не отстаёт — ей нечего ждать).
+                "EXTRACT(EPOCH FROM replay_lag) AS lag_seconds "
                 "FROM pg_stat_replication"
             )
         )
@@ -61,6 +66,7 @@ async def replicas() -> list[dict]:
                 "sync_state": r.sync_state,
                 "address": r.client_addr,
                 "lag_bytes": int(r.lag_bytes or 0),
+                "lag_seconds": None if r.lag_seconds is None else float(r.lag_seconds),
             }
             for r in rows
         ]
@@ -193,22 +199,54 @@ async def snapshot() -> dict:
 
 
 def health(state: dict) -> tuple[str, str]:
-    """Свести картину к одному статусу и человеческой фразе."""
+    """Свести картину к одному статусу и человеческой фразе.
+
+    Асинхронный режим — не поломка, если он выбран осознанно: серверы в разных
+    странах, и ожидание соседа на каждой записи стоило бы десятки миллисекунд.
+    Поэтому «асинхронно» само по себе не тревога, тревога — РАЗМЕР отставания:
+    именно столько работы пропадёт, если главный исчезнет прямо сейчас.
+    Отдельно ловится случай «реплики нет вовсе» — он одинаково плох в любом
+    режиме и означает, что данные живут на одном сервере.
+    """
+    warn_after = settings.replication_lag_warn_seconds
+    alert_after = settings.replication_lag_alert_seconds
+
     if state["role"] == PRIMARY:
         if state["read_only"]:
             return "down", "узел изолирован и переведён в режим только чтения"
-        synced = [r for r in state["replicas"] if r["sync_state"] == "sync"]
-        if synced:
+
+        replicas = state["replicas"]
+        if not replicas:
+            # Второй узел настроен, но реплики нет — это авария независимо от
+            # выбранного режима. Если кластера нет вовсе, это просто одиночный
+            # сервер, и обещать ему отказоустойчивость никто не обещал.
+            if state["sync_configured"] or state.get("peer") is not None:
+                return "down", "реплики нет: данные пишутся только на один сервер"
+            return "warn", "главный узел, реплика не настроена"
+
+        if [r for r in replicas if r["sync_state"] == "sync"]:
             return "ok", "главный узел, реплика синхронна"
-        if state["replicas"]:
-            return "warn", "реплика подключена, но работает асинхронно"
+
         if state["sync_configured"]:
-            return "down", "реплики нет: данные пишутся только на один сервер"
-        return "warn", "главный узел, реплика не настроена"
+            # Синхронный режим заказан, но не действует — либо сторож опустил
+            # его из-за пропажи резерва, либо он не настроен на самой базе.
+            return "warn", "реплика подключена, но синхронный режим не действует"
+
+        lag = max((r.get("lag_seconds") or 0.0) for r in replicas)
+        if lag > alert_after:
+            return "down", (
+                f"асинхронная реплика отстала на {round(lag)} с — "
+                "столько данных потеряется при внезапной аварии"
+            )
+        if lag > warn_after:
+            return "warn", f"асинхронная реплика отстаёт на {round(lag)} с"
+        return "ok", f"главный узел, асинхронная реплика отстаёт на {round(lag, 1)} с"
 
     lag = state["lag_seconds"]
     if lag is None:
         return "warn", "резерв, отставание неизвестно"
-    if lag > 60:
+    if lag > alert_after:
         return "down", f"резерв отстал на {round(lag)} с"
+    if lag > warn_after:
+        return "warn", f"резерв отстаёт на {round(lag)} с"
     return "ok", f"резерв в строю, отставание {round(lag, 1)} с"

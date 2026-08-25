@@ -40,6 +40,10 @@ class _State:
     isolated_checks = 0
     standby_missing_since: float | None = None
     failed_over = False
+    # Тревога об отставшей реплике уже отправлена. Без этого флага сторож
+    # писал бы в Telegram каждые полминуты, и на такие сообщения перестали бы
+    # смотреть — ровно к тому моменту, когда посмотреть стоило бы.
+    lag_alerted = False
 
 
 state = _State()
@@ -130,18 +134,25 @@ async def _guard_isolation() -> dict:
 
 
 async def guard_replication() -> dict:
-    """Главный следит за синхронной репликой.
+    """Главный следит за репликой.
 
     Синхронный режим означает «подтверждать транзакцию только после записи
     на второй сервер». Если второй сервер умер, каждая запись будет ждать
     его вечно — то есть система встанет целиком. Поэтому при пропаже реплики
     режим сам опускается до асинхронного, а как только реплика вернётся —
     поднимается обратно.
+
+    Если синхронный режим выключен намеренно (серверы в разных странах),
+    надзор передаётся в ``guard_async_replication``: там сторожить нужно не
+    доступность записи, а размер отставания.
     """
     import time
 
-    if await cluster.role() != cluster.PRIMARY or not settings.sync_replication:
+    if await cluster.role() != cluster.PRIMARY:
         return {"applicable": False}
+
+    if not settings.sync_replication:
+        return await guard_async_replication()
 
     connected = [r for r in await cluster.replicas() if r["state"] == "streaming"]
     sync_on = bool(await cluster.sync_standby_names())
@@ -174,6 +185,65 @@ async def guard_replication() -> dict:
         "Данные сейчас пишутся только на один сервер — почините резерв."
     )
     return {"applicable": True, "action": "degraded"}
+
+
+async def guard_async_replication() -> dict:
+    """Главный следит за асинхронной репликой.
+
+    Когда серверы стоят в разных странах, синхронный режим означает ожидание
+    соседа на КАЖДОЙ записи — десятки миллисекунд на транзакцию, и это видно
+    пользователю на массовых действиях. Поэтому режим осознанно выключают
+    (``SYNC_REPLICATION=false``), а расплатой становится окно потери: всё, что
+    реплика не успела получить, исчезнет вместе с главным.
+
+    Синхронному режиму сторож был нужен, чтобы система не встала. Здесь встать
+    нечему — зато отставание надо мерить и о нём кричать, иначе «реплика
+    отвалилась» выясняется уже после аварии, по отсутствующим заказам.
+    """
+    import time
+
+    connected = [r for r in await cluster.replicas() if r["state"] == "streaming"]
+
+    if not connected:
+        now = time.monotonic()
+        if state.standby_missing_since is None:
+            state.standby_missing_since = now
+            return {"applicable": True, "mode": "async", "action": "standby_missing"}
+        if now - state.standby_missing_since < settings.sync_degrade_after_seconds:
+            return {"applicable": True, "mode": "async", "action": "waiting"}
+        if not state.lag_alerted:
+            state.lag_alerted = True
+            await _notify(
+                f"⚠️ Реплика отвалилась от сервера {settings.node_name} и не возвращается "
+                f"дольше {settings.sync_degrade_after_seconds} c. Данные сейчас существуют "
+                "в одном экземпляре: авария этого сервера потеряет всё, что накопилось "
+                "с последнего бэкапа. Почините резерв."
+            )
+        return {"applicable": True, "mode": "async", "action": "replica_lost"}
+
+    state.standby_missing_since = None
+    # lag_seconds пуст, когда записей не было вовсе — отставать не от чего.
+    lag = max((r.get("lag_seconds") or 0.0) for r in connected)
+
+    if lag > settings.replication_lag_alert_seconds:
+        if not state.lag_alerted:
+            state.lag_alerted = True
+            await _notify(
+                f"⚠️ Реплика отстала от сервера {settings.node_name} на {round(lag)} c. "
+                "Столько работы потеряется, если главный сервер исчезнет прямо сейчас. "
+                "Обычная причина — канал между серверами или нехватка ресурсов на резерве."
+            )
+        return {"applicable": True, "mode": "async", "action": "lagging", "lag_seconds": round(lag, 1)}
+
+    if state.lag_alerted:
+        state.lag_alerted = False
+        await _notify(
+            f"Реплика догнала сервер {settings.node_name}, отставание {round(lag, 1)} c — "
+            "кластер снова в норме."
+        )
+        return {"applicable": True, "mode": "async", "action": "recovered", "lag_seconds": round(lag, 1)}
+
+    return {"applicable": True, "mode": "async", "action": "ok", "lag_seconds": round(lag, 1)}
 
 
 async def _notify(message: str) -> None:

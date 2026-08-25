@@ -14,6 +14,15 @@ REPL_USER="${REPLICATION_USER:-replicator}"
 REPL_PASSWORD="${REPLICATION_PASSWORD:?задайте REPLICATION_PASSWORD}"
 PEER_IP="${PEER_IP:-10.8.0.2}"          # адрес резерва внутри туннеля
 STANDBY_NAME="${SYNC_STANDBY_NAME:-standby}"
+# Синхронный режим осмыслен, когда серверы рядом (задержка 1-3 мс). Если они
+# в разных странах, каждая запись ждала бы соседа десятки миллисекунд, поэтому
+# режим выключают в .env — и скрипт обязан это уважать, иначе настройка
+# молча вернула бы синхронность обратно.
+SYNC_REPLICATION="${SYNC_REPLICATION:-true}"
+# Сколько WAL главный готов копить для отставшего резерва. Слот держит журналы
+# сколько угодно — и однажды забивает диск целиком; потолок превращает эту
+# аварию в куда более дешёвую «резерв придётся переналить».
+MAX_SLOT_WAL="${MAX_SLOT_WAL_KEEP_SIZE:-10GB}"
 
 psql() { $COMPOSE exec -T "$DB_SERVICE" psql -U "$PG_USER" -d postgres -v ON_ERROR_STOP=1 "$@"; }
 
@@ -38,11 +47,28 @@ psql -c "ALTER SYSTEM SET wal_level = 'replica';"
 psql -c "ALTER SYSTEM SET max_wal_senders = 10;"
 psql -c "ALTER SYSTEM SET max_replication_slots = 10;"
 psql -c "ALTER SYSTEM SET wal_keep_size = '1GB';"
+psql -c "ALTER SYSTEM SET max_slot_wal_keep_size = '$MAX_SLOT_WAL';"
 psql -c "ALTER SYSTEM SET hot_standby = on;"
-# Синхронный режим: транзакция подтверждается только после записи на резерв.
-# ANY 1 — достаточно одного подтверждения; при пропаже резерва воркер сам
-# опустит режим до асинхронного, иначе запись встала бы целиком.
-psql -c "ALTER SYSTEM SET synchronous_standby_names = 'ANY 1 ($STANDBY_NAME)';"
+# Сжатие WAL: между странами поток репликации идёт через платный внешний
+# канал, и на записях с полными образами страниц сжатие срезает его в разы.
+# Цена — немного процессорного времени, которого на этом приложении избыток.
+psql -c "ALTER SYSTEM SET wal_compression = on;"
+
+if [ "$SYNC_REPLICATION" = "true" ]; then
+  # Синхронный режим: транзакция подтверждается только после записи на резерв.
+  # ANY 1 — достаточно одного подтверждения; при пропаже резерва воркер сам
+  # опустит режим до асинхронного, иначе запись встала бы целиком.
+  echo "   режим: синхронный (транзакция ждёт резерв)"
+  psql -c "ALTER SYSTEM SET synchronous_standby_names = 'ANY 1 ($STANDBY_NAME)';"
+else
+  # Асинхронный режим: главный никого не ждёт. Так делают, когда серверы
+  # далеко друг от друга. Плата — окно потери: всё, что не доехало до
+  # резерва, исчезнет вместе с главным. За размером окна следит воркер
+  # (guard_async_replication) и ругается, когда оно выходит за порог.
+  echo "   режим: АСИНХРОННЫЙ (главный не ждёт резерв; возможна потеря последних транзакций)"
+  psql -c "ALTER SYSTEM SET synchronous_standby_names = '';"
+fi
+# Локальный fsync остаётся в любом случае: своё-то мы теряем не хотим.
 psql -c "ALTER SYSTEM SET synchronous_commit = 'on';"
 
 echo "== Доступ резерва (pg_hba)"
