@@ -26,12 +26,19 @@ systemctl enable --now docker
 
 # Подкачка: на 2 ГБ единственный момент, когда память может кончиться, —
 # часовой бэкап, который держит дамп целиком. Это подушка, а не решение.
-if [ ! -f /swapfile ]; then
+#
+# Проверяем ПОДКЛЮЧЁННЫЙ swap, а не наличие файла: в образах некоторых
+# провайдеров /swapfile лежит с завода, но не подключён и не прописан в
+# fstab. Проверка «файл существует» такой образ пропускала, и сервер
+# оставался вообще без подкачки — ровно там, где она и нужна.
+if ! swapon --show 2>/dev/null | grep -q .; then
+    swapoff /swapfile 2>/dev/null || true
+    rm -f /swapfile
     fallocate -l 2G /swapfile
     chmod 600 /swapfile
     mkswap /swapfile
     swapon /swapfile
-    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 # Своппить только когда действительно припёрло: иначе база уедет в swap на
 # ровном месте и всё станет медленным без всякой причины.
