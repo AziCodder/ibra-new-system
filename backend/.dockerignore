@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.venv
+venv
+# Секреты в образ не запекаются: dev получает .env через bind-mount, prod —
+# через environment в compose. Иначе рабочий токен бота уезжал бы в образ.
+.env
+.env.*
+!.env.production.example
+# Реальные загрузки и дампы — это данные, а не код.
+uploads
+backups

@@ -1,3 +1,6 @@
+# Локальная разработка целиком в докере: `docker compose up -d --build`
+# поднимает базу, накатывает миграции, запускает API, фоновый воркер и
+# фронтенд. Ни uvicorn, ни npm руками запускать не нужно.
 services:
   db:
     image: postgres:16-alpine
@@ -22,7 +25,10 @@ services:
     ports:
       - "8011:8000"
     env_file:
-      - ./backend/.env
+      # required: false — на чистой машине без backend/.env стек всё равно
+      # поднимется: у всех настроек есть рабочие значения по умолчанию.
+      - path: ./backend/.env
+        required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ibra_orders
       # Тот же каталог, что у воркера: ручной бэкап из админки и бэкап по
@@ -33,6 +39,14 @@ services:
       - ./backend:/app
       - ./:/workspace:ro
       - backups:/var/lib/ibra/backups
+    # Готов = миграции накатились и база отвечает. По этому признаку стартуют
+    # воркер и фронтенд, поэтому они не видят полусобранную схему.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=5)"]
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 60s
     depends_on:
       db:
         condition: service_healthy
@@ -49,7 +63,8 @@ services:
     restart: unless-stopped
     command: python -m app.workers.scheduler
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ibra_orders
       BACKUP_DIR: /var/lib/ibra/backups
@@ -57,7 +72,9 @@ services:
       - ./backend:/app
       - backups:/var/lib/ibra/backups
     depends_on:
-      db:
+      # Не просто «база жива», а «миграции накатились»: иначе воркер стартует
+      # на пустой схеме, падает и крутится в перезапусках до первого бэкапа.
+      backend:
         condition: service_healthy
 
   # Read-only прокси к Docker API — даёт админке («Логи процессов») доступ к
@@ -81,13 +98,20 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - BACKEND_URL=http://backend:8000
+      BACKEND_URL: http://backend:8000
+      # Опрос файлов вместо inotify: события с хостовой файловой системы в
+      # контейнер не доходят, и без этого правки не подхватывались.
+      VITE_DEV_POLLING: "1"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
+      # Именованный том вместо анонимного: зависимости переживают пересоздание
+      # контейнера, а entrypoint сам доставит их, если package-lock.json менялся.
+      - frontend_node_modules:/app/node_modules
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   pgdata:
   backups:
+  frontend_node_modules:
