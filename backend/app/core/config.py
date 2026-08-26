@@ -115,8 +115,8 @@ class Settings(BaseSettings):
     replication_lag_warn_seconds: int = 30
     replication_lag_alert_seconds: int = 120
 
-    # Переключение домена при аварии. reg.ru — где куплен домен;
-    # cloudflare — если делегировать зону туда (TTL 60 c вместо 300+).
+    # Переключение домена при аварии. Зона cargo-ibragim.ru живёт в Cloudflare
+    # (TTL 60 c); regru оставлен на случай переезда зоны к регистратору.
     dns_provider: Literal["none", "regru", "cloudflare"] = "none"
     dns_zone: str = "cargo-ibragim.ru"
     dns_record: str = "flow"
