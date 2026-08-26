@@ -78,9 +78,11 @@ jobs:
   # Сборка боевых образов. Живёт здесь, а не отдельным workflow, чтобы
   # `needs` физически не давал опубликовать образ, не прошедший тесты.
   #
-  # Зачем вообще собирать в CI: на сервере 2 ГБ памяти, а `vite build`
-  # требует 1.5-2.5 ГБ. Сборка на боевой машине падала бы по OOM ровно в
-  # момент выкладки. Сервер только скачивает готовый образ.
+  # Зачем вообще собирать в CI: на сервер должен приезжать ровно тот образ,
+  # который прошёл тесты, а не пересобранный из того, что оказалось в рабочем
+  # каталоге. Плюс выкладка перестаёт зависеть от свободной памяти сервера —
+  # `vite build` просит 1.5-2.5 ГБ, и на машине поменьше это падало бы по OOM
+  # ровно в момент обновления.
   images:
     needs: [backend, frontend]
     if: github.event_name == 'push'
@@ -99,6 +101,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Владелец репозитория пишется как AziCodder, а Docker требует имена
+      # реестра строго в нижнем регистре и отказывается собирать: «repository
+      # name must be lowercase». Приводим сами, а не хардкодим, — иначе
+      # переименование аккаунта сломает сборку молча.
+      - name: Владелец в нижнем регистре
+        id: repo
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
       # Два тега на образ: latest и короткий SHA. latest — чтобы сервер
       # тянул «свежее», SHA — чтобы можно было откатиться на конкретную
       # сборку, не гадая, какая из них была вчера.
@@ -109,8 +119,8 @@ jobs:
           file: ./backend/Dockerfile.prod
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/ibra-backend:latest
-            ghcr.io/${{ github.repository_owner }}/ibra-backend:${{ github.sha }}
+            ghcr.io/${{ steps.repo.outputs.owner }}/ibra-backend:latest
+            ghcr.io/${{ steps.repo.outputs.owner }}/ibra-backend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -121,8 +131,8 @@ jobs:
           file: ./frontend/Dockerfile.prod
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/ibra-frontend:latest
-            ghcr.io/${{ github.repository_owner }}/ibra-frontend:${{ github.sha }}
+            ghcr.io/${{ steps.repo.outputs.owner }}/ibra-frontend:latest
+            ghcr.io/${{ steps.repo.outputs.owner }}/ibra-frontend:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
