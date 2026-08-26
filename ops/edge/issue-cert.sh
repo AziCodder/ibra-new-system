@@ -47,16 +47,39 @@ $COMPOSE run --rm --entrypoint sh certbot -c "
     openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
       -keyout \$d/privkey.pem -out \$d/fullchain.pem \
       -subj '/CN=$DOMAIN' 2>/dev/null
+    # Метка «это наша заглушка, а не сертификат certbot». Без неё нельзя
+    # отличить временный сертификат от настоящего, а удалять вслепую нельзя.
+    touch \$d/.self-signed
   fi
 "
 
 echo "== Поднимаю edge на 80 порту (нужен для проверки владения доменом)"
 $COMPOSE up -d edge
 
+# certbot отказывается работать, если каталог live/<домен> создан не им:
+# «live directory exists». Наша заглушка — как раз такой каталог, поэтому
+# убираем её сразу перед выпуском. Для nginx это безопасно: он уже загрузил
+# сертификат в память при старте и продолжает отвечать, пока файлов нет.
+echo "== Убираю временную заглушку, если она наша"
+$COMPOSE run --rm --entrypoint sh certbot -c "
+  d=/etc/letsencrypt/live/$DOMAIN
+  if [ -f \$d/.self-signed ]; then
+    rm -rf \$d
+    echo '   заглушка убрана'
+  else
+    echo '   заглушки нет — каталог принадлежит certbot'
+  fi
+"
+
 echo "== Запрашиваю сертификат"
+# --cert-name задаёт имя линии сертификата ЯВНО. Без него certbot, увидев
+# следы прошлой попытки, заводит вторую линию «домен-0001» и кладёт файлы
+# туда — а nginx ищет по каноническому пути и падает с «cannot load
+# certificate». Выпуск при этом проходит успешно, и понять, почему сайт лежит,
+# по логам certbot невозможно.
 $COMPOSE run --rm --entrypoint certbot certbot \
   certonly --webroot -w /var/www/certbot \
-  -d "$DOMAIN" --email "$EMAIL" \
+  -d "$DOMAIN" --cert-name "$DOMAIN" --email "$EMAIL" \
   --agree-tos --no-eff-email --non-interactive
 
 echo "== Перечитываю конфиг nginx"
