@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { User, Lock, Eye, EyeOff, Sun, Moon } from 'lucide-react'
+import { Logo } from '../ui/Logo'
 
 function LoginThemeToggle() {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
@@ -70,19 +71,8 @@ export default function LoginPage() {
       >
         {/* Logo + title */}
         <div className="flex flex-col items-center mb-8 text-center">
-          <div
-            className="flex items-center justify-center font-bold mb-4"
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: 14,
-              background: 'var(--sidebar-active-bg)',
-              color: '#fff',
-              fontSize: 15,
-              letterSpacing: '0.02em',
-            }}
-          >
-            IO
+          <div className="mb-4">
+            <Logo size={48} />
           </div>
           <h1
             className="text-xl font-semibold mb-1"

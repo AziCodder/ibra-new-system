@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import Avatar from './Avatar'
+import { Logo } from '../ui/Logo'
 import {
   Package,
   CreditCard,
@@ -81,18 +82,8 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         }}
       >
         <div className="flex items-center gap-2.5" style={{ padding: '18px 18px 16px', flexShrink: 0 }}>
-          <div
-            className="flex items-center justify-center flex-shrink-0 font-bold"
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 10,
-              background: 'var(--sidebar-active-bg)',
-              color: '#fff',
-              fontSize: 13,
-            }}
-          >
-            IO
+          <div className="flex-shrink-0">
+            <Logo size={34} />
           </div>
           <div className="text-[15px]" style={{ color: 'var(--sidebar-text)', fontWeight: 700, letterSpacing: '-0.01em' }}>
             Ibragim Flow
