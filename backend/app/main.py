@@ -32,15 +32,21 @@ from app.routers.suppliers import router as suppliers_router
 from app.routers.system_health import router as system_health_router
 from app.routers.telegram_groups import router as telegram_groups_router
 from app.routers.users import router as users_router
-from app.services.telegram_bot import close_bot, start_polling, stop_polling
+from app.services.telegram_bot import (
+    close_bot,
+    start_polling_supervisor,
+    stop_polling_supervisor,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging(production=settings.is_production)
-    await start_polling()
+    # Опрос Telegram включается только на главном узле — этим управляет
+    # надзиратель, он же переключает опрос после смены ролей в кластере.
+    await start_polling_supervisor()
     yield
-    await stop_polling()
+    await stop_polling_supervisor()
     await close_bot()
 
 

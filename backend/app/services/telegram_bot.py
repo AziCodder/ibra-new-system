@@ -185,6 +185,73 @@ async def stop_polling() -> None:
     logger.info("Telegram bot polling stopped")
 
 
+# ──────────────────────────────────────────── опрос только на главном узле
+
+ROLE_CHECK_SECONDS = 20
+
+_supervisor_task: asyncio.Task | None = None
+
+
+async def should_poll() -> bool:
+    """Опрашивать Telegram имеет право только главный узел.
+
+    Telegram отдаёт обновления ровно одному подписчику: если опрашивают оба
+    узла кластера, они перехватывают сообщения друг у друга (``Conflict:
+    terminated by other getUpdates request``), и часть уведомлений просто
+    теряется. Роль спрашивается у базы, а не берётся из конфига — после
+    переключения конфиг сказал бы неправду.
+    """
+    if not settings.peer_url:
+        # Кластера нет — одиночный сервер, опрашивать некому мешать.
+        return True
+    from app.services import cluster
+
+    try:
+        return await cluster.role() == cluster.PRIMARY
+    except Exception:  # noqa: BLE001 — база недоступна, роль неизвестна
+        # В неизвестности молчим: перехватить обновления у живого главного
+        # хуже, чем не отвечать самому.
+        return False
+
+
+async def _supervise() -> None:
+    """Следит за ролью узла и включает/выключает опрос по ней.
+
+    Нужен именно цикл, а не разовая проверка при старте: после перехвата
+    резерв становится главным и обязан начать опрашивать бота сам, а бывший
+    главный — перестать, когда вернётся в строй резервом.
+    """
+    while True:
+        try:
+            wanted = await should_poll()
+            running = _polling_task is not None and not _polling_task.done()
+            if wanted and not running:
+                await start_polling()
+            elif not wanted and running:
+                logger.info("узел больше не главный — останавливаю опрос Telegram")
+                await stop_polling()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — надзор не должен падать
+            logger.exception("надзор за опросом Telegram: сбой")
+        await asyncio.sleep(ROLE_CHECK_SECONDS)
+
+
+async def start_polling_supervisor() -> None:
+    global _supervisor_task
+    _supervisor_task = asyncio.create_task(_supervise())
+
+
+async def stop_polling_supervisor() -> None:
+    global _supervisor_task
+    if _supervisor_task is not None and not _supervisor_task.done():
+        _supervisor_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await _supervisor_task
+        _supervisor_task = None
+    await stop_polling()
+
+
 async def send_message(chat_id: str | int, text: str) -> bool:
     bot = get_bot()
     if bot is None:
