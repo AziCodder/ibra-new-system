@@ -1,9 +1,16 @@
 """Состояние системы для админ-панели («Состояние системы»).
 
-Сводит здоровье инфраструктуры (бэкенд, БД, файловое хранилище, фронтенд) и
-HTTP-пробы ключевых страниц фронта и публичных эндпоинтов бэкенда с их
-статус-кодами и временем ответа. Каждая проверка изолирована (не поднимает
-исключение наружу): сбой одной не роняет остальные и не валит сам эндпоинт.
+Сводит здоровье инфраструктуры и HTTP-пробы ключевых страниц фронта и
+публичных эндпоинтов бэкенда с их статус-кодами и временем ответа.
+
+Инфраструктура — это бэкенд, база, фронтенд, ОБА узла кластера (свой с ролью
+и отставанием реплики, соседний по его адресу) и ОБА хранилища вложений.
+Показывать одно «файловое хранилище» на два независимых бакета бессмысленно:
+смысл второго ровно в том, чтобы пережить отказ первого, а значит их
+состояния нужно видеть порознь.
+
+Каждая проверка изолирована (не поднимает исключение наружу): сбой одной не
+роняет остальные и не валит сам эндпоинт.
 
 Статусы: ``ok`` | ``warn`` | ``down``. Итоговый ``overall`` — худший из всех.
 """
@@ -83,13 +90,93 @@ def _storage_probe() -> None:
         pass
 
 
-async def _check_storage() -> dict:
+async def _check_local_storage() -> dict:
     t0 = time.perf_counter()
     try:
         await asyncio.to_thread(_storage_probe)
         return {"name": "storage", "label": "Файловое хранилище", "status": "ok", "latency_ms": _ms(t0)}
     except Exception as exc:  # noqa: BLE001
         return {"name": "storage", "label": "Файловое хранилище", "status": "down", "detail": str(exc)[:200]}
+
+
+async def _check_bucket(name: str, config) -> dict:
+    """Проверка одного бакета: реальный запрос к S3, а не чтение конфига."""
+    from app.services.s3 import S3Bucket
+
+    label = config.label or name
+    if not config.configured:
+        return {
+            "name": name,
+            "label": label,
+            "status": "down" if name == "s3_primary" else "warn",
+            "detail": "не настроено",
+        }
+    t0 = time.perf_counter()
+    try:
+        await S3Bucket(config).ping()
+        return {"name": name, "label": label, "status": "ok", "latency_ms": _ms(t0),
+                "detail": config.bucket}
+    except Exception as exc:  # noqa: BLE001
+        return {"name": name, "label": label, "status": "down", "latency_ms": _ms(t0),
+                "detail": str(exc)[:200]}
+
+
+async def _check_storage() -> list[dict]:
+    """Хранилище вложений: локальная папка либо два независимых бакета.
+
+    Раньше здесь всегда проверялась папка на диске — даже когда файлы давно
+    уехали в S3. Карточка горела зелёным, ничего не зная о бакетах: отказ
+    хранилища не был виден в админке вообще.
+    """
+    if settings.storage_backend != "s3":
+        return [await _check_local_storage()]
+    return list(
+        await asyncio.gather(
+            _check_bucket("s3_primary", settings.s3_primary_config),
+            _check_bucket("s3_mirror", settings.s3_mirror_config),
+        )
+    )
+
+
+async def _check_cluster() -> list[dict]:
+    """Оба узла кластера: этот и соседний, с ролями и отставанием реплики.
+
+    Роль спрашивается у базы, а не берётся из конфига: после переключения
+    конфиг сказал бы неправду. Сосед проверяется по своему адресу — тем же
+    способом, каким это делает сторож, принимающий решение о перехвате.
+    """
+    from app.services import cluster
+
+    if not settings.peer_url:
+        return []
+    try:
+        state = await cluster.snapshot()
+        status, detail = cluster.health(state)
+    except Exception as exc:  # noqa: BLE001
+        return [{"name": "node_self", "label": f"Сервер {settings.node_name}",
+                 "status": "down", "detail": str(exc)[:200]}]
+
+    role = "главный" if state["role"] == cluster.PRIMARY else "резерв"
+    services = [{
+        "name": "node_self",
+        "label": f"Сервер {settings.node_name} · {role}",
+        "status": status,
+        "detail": detail,
+    }]
+
+    peer = state.get("peer") or {}
+    alive = bool(peer.get("alive"))
+    # Сосед отвечает — значит он жив как машина. Какая у него роль, отсюда
+    # не видно: спрашивать об этом мёртвый узел бессмысленно, а живой ответит
+    # на своей же странице состояния.
+    services.append({
+        "name": "node_peer",
+        "label": "Второй сервер",
+        "status": "ok" if alive else "down",
+        "latency_ms": peer.get("latency_ms"),
+        "detail": "отвечает" if alive else (peer.get("detail") or "не отвечает")[:200],
+    })
+    return services
 
 
 async def _probe(client: httpx.AsyncClient, *, name: str, url: str, kind: str) -> dict:
@@ -144,8 +231,13 @@ async def collect(session: AsyncSession, *, client: httpx.AsyncClient | None = N
     own_client = client is None
     client = client or httpx.AsyncClient(timeout=PROBE_TIMEOUT)
     try:
-        (db_check, storage_check, frontend_check), pages, apis = await asyncio.gather(
-            asyncio.gather(_check_database(session), _check_storage(), _check_frontend(client, fe_base)),
+        (db_check, storage_checks, frontend_check, cluster_checks), pages, apis = await asyncio.gather(
+            asyncio.gather(
+                _check_database(session),
+                _check_storage(),
+                _check_frontend(client, fe_base),
+                _check_cluster(),
+            ),
             asyncio.gather(*[_probe(client, name=p, url=fe_base + p, kind="page") for p in FRONTEND_PAGES]),
             asyncio.gather(*[_probe(client, name=p, url=be_base + p, kind="api") for p in API_ENDPOINTS]),
         )
@@ -153,7 +245,13 @@ async def collect(session: AsyncSession, *, client: httpx.AsyncClient | None = N
         if own_client:
             await client.aclose()
 
-    services = [_check_backend(), db_check, storage_check, frontend_check]
+    services = [
+        _check_backend(),
+        db_check,
+        frontend_check,
+        *cluster_checks,
+        *storage_checks,
+    ]
     all_pages = [*pages, *apis]
     return {
         "enabled": True,

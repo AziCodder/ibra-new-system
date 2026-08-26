@@ -1,99 +1,99 @@
+"""Состояние системы: что именно видно в админке.
+
+Проверяется не форматирование, а полнота картины. Пропущенный в сводке
+компонент — это отказ, о котором никто не узнает: панель горит зелёным,
+пока хранилище или второй узел лежат.
+"""
+
 import pytest
 
 from app.core.config import settings
-from app.core.database import async_session_factory
-from app.routers.system_health import get_system_health
-from app.services import system_health
-
-
-@pytest.fixture(autouse=True)
-def _unreachable_probe_targets(monkeypatch):
-    """Point probes at a closed local port so unit tests fail fast (connection
-    refused) instead of waiting out DNS/timeout for the docker-network hosts."""
-    monkeypatch.setattr(settings, "health_frontend_base", "http://127.0.0.1:1")
-    monkeypatch.setattr(settings, "health_self_base", "http://127.0.0.1:1")
+from app.services import cluster, system_health
 
 
 @pytest.mark.asyncio
-async def test_collect_reports_all_sections_and_marks_unreachable_probes_down():
-    async with async_session_factory() as session:
-        report = await system_health.collect(session)
+async def test_s3_mode_shows_both_buckets_separately(monkeypatch):
+    """Два независимых бакета — две карточки.
 
-    assert report["enabled"] is True
-    assert report["checked_at"] is not None
+    Одна общая строка «файловое хранилище» скрыла бы отказ зеркала, а оно
+    существует ровно для того, чтобы пережить отказ основного.
+    """
+    monkeypatch.setattr(settings, "storage_backend", "s3")
 
-    service_names = {s["name"] for s in report["services"]}
-    assert service_names == {"backend", "database", "storage", "frontend"}
+    async def fake(name, config):
+        return {"name": name, "label": config.label, "status": "ok"}
 
-    backend = next(s for s in report["services"] if s["name"] == "backend")
-    assert backend["status"] == "ok"
+    monkeypatch.setattr(system_health, "_check_bucket", fake)
+    checks = await system_health._check_storage()
 
-    database = next(s for s in report["services"] if s["name"] == "database")
-    assert database["status"] == "ok"  # runs against the real test DB
-
-    frontend = next(s for s in report["services"] if s["name"] == "frontend")
-    assert frontend["status"] == "down"  # unreachable target from fixture
-
-    page_names = {p["name"] for p in report["pages"] if p["kind"] == "page"}
-    assert page_names == set(system_health.FRONTEND_PAGES)
-    api_names = {p["name"] for p in report["pages"] if p["kind"] == "api"}
-    assert api_names == set(system_health.API_ENDPOINTS)
-    assert all(p["status"] == "down" and p["status_code"] is None for p in report["pages"])
-
-    # Backend/DB/storage all healthy but frontend+probes down → overall degraded, not worst-case.
-    assert report["overall"] == "down"
+    assert [c["name"] for c in checks] == ["s3_primary", "s3_mirror"]
 
 
 @pytest.mark.asyncio
-async def test_collect_disabled_returns_empty_report(monkeypatch):
-    monkeypatch.setattr(settings, "health_check_enabled", False)
-    async with async_session_factory() as session:
-        report = await system_health.collect(session)
+async def test_local_mode_keeps_single_card(monkeypatch):
+    monkeypatch.setattr(settings, "storage_backend", "local")
+    checks = await system_health._check_storage()
 
-    assert report == {
-        "enabled": False,
-        "overall": "ok",
-        "services": [],
-        "pages": [],
-        "checked_at": report["checked_at"],
-    }
+    assert len(checks) == 1
+    assert checks[0]["name"] == "storage"
 
 
 @pytest.mark.asyncio
-async def test_status_for_code_thresholds():
-    assert system_health.status_for_code(200) == "ok"
-    assert system_health.status_for_code(404) == "warn"
-    assert system_health.status_for_code(500) == "down"
+async def test_unconfigured_mirror_is_a_warning_not_a_failure(monkeypatch):
+    """Зеркала нет — это предупреждение: система работает, но без страховки.
+    Отсутствие ОСНОВНОГО бакета — уже отказ, вложения складывать некуда."""
+    monkeypatch.setattr(settings, "storage_backend", "s3")
+    monkeypatch.setattr(settings, "s3_primary_endpoint", "")
+    monkeypatch.setattr(settings, "s3_mirror_endpoint", "")
+
+    checks = await system_health._check_storage()
+    by_name = {c["name"]: c for c in checks}
+
+    assert by_name["s3_primary"]["status"] == "down"
+    assert by_name["s3_mirror"]["status"] == "warn"
 
 
 @pytest.mark.asyncio
-async def test_collect_uses_ok_probes_when_targets_reachable(monkeypatch):
-    """A reachable target with 200s should flip frontend/pages/apis back to ok."""
+async def test_cluster_shows_both_nodes_with_role(monkeypatch):
+    monkeypatch.setattr(settings, "peer_url", "http://10.8.0.2/api/cluster/ping")
+    monkeypatch.setattr(settings, "node_name", "A")
 
-    class _FakeResponse:
-        status_code = 200
+    async def snapshot():
+        return {
+            "node": "A", "role": cluster.PRIMARY, "read_only": False,
+            "sync_configured": False, "replicas": [{"sync_state": "async", "lag_seconds": 0.2}],
+            "lag_seconds": None, "peer": {"alive": True, "latency_ms": 27},
+        }
 
-    class _FakeClient:
-        async def get(self, url, follow_redirects=True):
-            return _FakeResponse()
+    monkeypatch.setattr(cluster, "snapshot", snapshot)
+    checks = await system_health._check_cluster()
 
-        async def aclose(self):
-            pass
-
-    async with async_session_factory() as session:
-        report = await system_health.collect(session, client=_FakeClient())  # type: ignore[arg-type]
-
-    assert report["overall"] == "ok"
-    frontend = next(s for s in report["services"] if s["name"] == "frontend")
-    assert frontend["status"] == "ok"
-    assert all(p["status"] == "ok" and p["status_code"] == 200 for p in report["pages"])
+    assert [c["name"] for c in checks] == ["node_self", "node_peer"]
+    assert "главный" in checks[0]["label"]
+    assert checks[1]["status"] == "ok"
+    assert checks[1]["latency_ms"] == 27
 
 
 @pytest.mark.asyncio
-async def test_get_system_health_endpoint_returns_report_for_admin(monkeypatch):
-    monkeypatch.setattr(settings, "health_check_enabled", False)
-    async with async_session_factory() as session:
-        result = await get_system_health(_admin=None, session=session)  # type: ignore[arg-type]
+async def test_dead_peer_is_visible(monkeypatch):
+    """Молчащий сосед должен быть красным, а не отсутствовать в сводке."""
+    monkeypatch.setattr(settings, "peer_url", "http://10.8.0.2/api/cluster/ping")
 
-    assert result["enabled"] is False
-    assert result["overall"] == "ok"
+    async def snapshot():
+        return {
+            "node": "A", "role": cluster.STANDBY, "read_only": False,
+            "sync_configured": False, "replicas": [], "lag_seconds": 0.0,
+            "peer": {"alive": False, "detail": "соединение отклонено"},
+        }
+
+    monkeypatch.setattr(cluster, "snapshot", snapshot)
+    checks = await system_health._check_cluster()
+
+    assert checks[1]["status"] == "down"
+    assert "резерв" in checks[0]["label"]
+
+
+@pytest.mark.asyncio
+async def test_no_cluster_configured_adds_nothing(monkeypatch):
+    monkeypatch.setattr(settings, "peer_url", "")
+    assert await system_health._check_cluster() == []

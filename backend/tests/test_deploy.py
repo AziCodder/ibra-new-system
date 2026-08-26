@@ -33,8 +33,26 @@ def test_backend_entrypoint_runs_migrations():
 def test_frontend_nginx_proxies_api():
     nginx = (ROOT / "frontend" / "nginx.conf").read_text(encoding="utf-8")
     assert "location /api/" in nginx
-    assert "proxy_pass http://backend:8000" in nginx
+    assert "backend:8000" in nginx
     assert "try_files" in nginx
+
+
+def test_nginx_does_not_cache_upstream_address_forever():
+    """Адрес upstream должен перечитываться, а не запоминаться при старте.
+
+    Без resolver и переменной в proxy_pass nginx определяет адрес контейнера
+    один раз и держит его вечно. После пересоздания backend адрес меняется, и
+    весь /api/ отдаёт 502 — при этом сайт открывается, падают только запросы
+    данных, так что поломка выглядит как ошибка приложения. Ровно это и
+    случилось на боевом сервере при первом же обновлении.
+    """
+    for path in (
+        ROOT / "frontend" / "nginx.conf",
+        ROOT / "ops" / "edge" / "nginx.conf",
+    ):
+        conf = path.read_text(encoding="utf-8")
+        assert "resolver 127.0.0.11" in conf, f"{path.name}: нет resolver"
+        assert "proxy_pass $" in conf, f"{path.name}: адрес не в переменной"
 
 
 def test_compose_prod_is_standalone():
