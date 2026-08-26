@@ -73,10 +73,23 @@ async def replicas() -> list[dict]:
 
 
 async def replay_lag_seconds() -> float | None:
-    """На сколько отстаёт реплика (имеет смысл только на резерве)."""
+    """На сколько отстаёт реплика (имеет смысл только на резерве).
+
+    Сначала сверяем позиции журнала, и только потом смотрим на часы. Само по
+    себе ``now() - pg_last_xact_replay_timestamp()`` — это время с ПОСЛЕДНЕЙ
+    транзакции, а не отставание: в тихую ночь без единой записи оно спокойно
+    дорастает до тысяч секунд на совершенно здоровой реплике. Тревога об
+    отставании приходила бы ровно тогда, когда система простаивает.
+
+    Если принятая позиция равна проигранной, резерв догнал главного целиком —
+    отставание ноль, сколько бы времени ни прошло с последней записи.
+    """
     value = await _scalar(
-        "SELECT CASE WHEN pg_is_in_recovery() "
-        "THEN EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) END"
+        "SELECT CASE "
+        "WHEN NOT pg_is_in_recovery() THEN NULL "
+        "WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0 "
+        "ELSE EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp())) "
+        "END"
     )
     return None if value is None else float(value)
 

@@ -29,6 +29,27 @@ if [ -n "$resolved" ] && [ -n "$mine" ] && [ "$resolved" != "$mine" ]; then
   [ "$answer" = "да" ] || exit 1
 fi
 
+# Петля первого запуска: nginx не стартует без файлов сертификата (в конфиге
+# есть блок 443), а сертификат нельзя получить, пока nginx не отвечает на 80.
+# Разрывается временным самоподписанным сертификатом — certbot заменит его
+# настоящим через несколько строк. Заодно это страховка на будущее: если файлы
+# сертификата когда-нибудь пропадут, edge поднимется и продолжит работать по
+# HTTP, вместо того чтобы не стартовать вовсе.
+echo "== Проверяю, есть ли чем запустить nginx"
+$COMPOSE run --rm --entrypoint sh certbot -c "
+  set -e
+  d=/etc/letsencrypt/live/$DOMAIN
+  if [ -f \$d/fullchain.pem ]; then
+    echo '   сертификат на месте'
+  else
+    echo '   сертификата нет — кладу временный самоподписанный на 1 день'
+    mkdir -p \$d
+    openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+      -keyout \$d/privkey.pem -out \$d/fullchain.pem \
+      -subj '/CN=$DOMAIN' 2>/dev/null
+  fi
+"
+
 echo "== Поднимаю edge на 80 порту (нужен для проверки владения доменом)"
 $COMPOSE up -d edge
 

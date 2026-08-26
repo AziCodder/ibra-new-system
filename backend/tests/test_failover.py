@@ -445,3 +445,26 @@ def test_single_server_without_cluster_is_not_an_alarm():
     status, _ = cluster.health(_state(replicas=[], peer=None))
 
     assert status == "warn"
+
+
+def test_idle_standby_is_not_reported_as_lagging(monkeypatch):
+    """Простой без записей — не отставание.
+
+    Отставание резерва меряется сравнением позиций журнала. Если считать его
+    как «время с последней транзакции», то на тихих выходных здоровая реплика
+    доберётся до любого порога и пришлёт тревогу на ровном месте.
+    """
+    monkeypatch.setattr(settings, "replication_lag_alert_seconds", 120)
+    status, detail = cluster.health(
+        _state(role=cluster.STANDBY, lag_seconds=0.0)
+    )
+
+    assert status == "ok"
+    assert "в строю" in detail
+
+
+def test_really_lagging_standby_is_still_caught(monkeypatch):
+    monkeypatch.setattr(settings, "replication_lag_alert_seconds", 120)
+    status, _ = cluster.health(_state(role=cluster.STANDBY, lag_seconds=600.0))
+
+    assert status == "down"
