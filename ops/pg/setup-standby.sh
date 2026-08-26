@@ -23,7 +23,14 @@ VOLUME="${PGDATA_VOLUME:-$VOLUME}"
 [ -n "$VOLUME" ] || { echo "Не нашёл том с данными базы; задайте PGDATA_VOLUME"; exit 1; }
 
 echo "Данные тома '$VOLUME' будут СТЁРТЫ и заменены копией с $PRIMARY_IP."
-read -r -p "Это резервный сервер? Введите 'да' для продолжения: " answer
+# Подтверждение можно передать переменной CONFIRM=да — иначе спрашиваем.
+# Через конвейер ответ передать нельзя: `docker compose exec` в вызывающем
+# скрипте (rejoin-as-standby.sh) вычитывает stdin себе, и до этого вопроса
+# ничего не доходит — процедура молча отменяется на середине.
+answer="${CONFIRM:-}"
+if [ -z "$answer" ]; then
+  read -r -p "Это резервный сервер? Введите 'да' для продолжения: " answer
+fi
 [ "$answer" = "да" ] || { echo "Отменено"; exit 1; }
 
 echo "== Останавливаю приложение и базу"
@@ -56,7 +63,10 @@ docker run --rm -v "$VOLUME:/var/lib/postgresql/data" "$PGIMAGE" sh -c "
 echo "== Запускаю"
 $COMPOSE up -d "$DB_SERVICE"
 sleep 5
-$COMPOSE up -d backend worker
+# Поднимаем ВСЁ, а не только базу с приложением: без frontend и edge узел
+# не отвечает на 443, то есть после возврата в строй сайт на нём молчит.
+# Проверка соседа тоже ходит на 80 порт — без edge узел выглядит мёртвым.
+$COMPOSE up -d backend worker frontend edge
 
 echo ""
 echo "Готово. Проверьте здесь:"
