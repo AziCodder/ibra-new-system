@@ -194,14 +194,22 @@ services:
   # продление происходит за 30 дней до конца срока — просроченный сертификат
   # закрывает сайт целиком, и ловить это вручную нельзя.
   certbot:
-    image: certbot/certbot:latest
+    # Образ с плагином dns-cloudflare: он же умеет и webroot, так что подходит
+    # обоим узлам. Резерву webroot не годится в принципе — Let's Encrypt
+    # проверяет владение, обращаясь по домену, а домен указывает на активный
+    # узел. Без проверки через DNS сертификат на резерве протух бы молча и
+    # вскрылось бы это ровно в аварию.
+    image: certbot/dns-cloudflare:latest
     restart: unless-stopped
     volumes:
       - certs:/etc/letsencrypt
       - acme:/var/www/certbot
+    # `certbot renew` без флагов берёт способ проверки из настроек каждого
+    # сертификата. Раньше здесь жёстко стоял --webroot, и он навязывался всем
+    # сертификатам разом, ломая продление через DNS.
     entrypoint: >
       sh -c 'trap exit TERM;
-      while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+      while :; do certbot renew --quiet;
       sleep 12h & wait $${!}; done'
 
   backup:

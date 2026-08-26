@@ -95,7 +95,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             IO
           </div>
           <div className="text-[15px]" style={{ color: 'var(--sidebar-text)', fontWeight: 700, letterSpacing: '-0.01em' }}>
-            Ibra Order System
+            Ibragim Flow
           </div>
         </div>
 
@@ -199,7 +199,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <Menu size={18} />
           </button>
           <span className="text-[15px]" style={{ color: 'var(--sidebar-text)', fontWeight: 700, letterSpacing: '-0.01em' }}>
-            Ibra Order System
+            Ibragim Flow
           </span>
         </header>
         <main className="flex-1 min-w-0" style={{ background: 'var(--color-bg)' }}>{children}</main>

@@ -88,7 +88,7 @@ export default function LoginPage() {
             className="text-xl font-semibold mb-1"
             style={{ color: 'var(--color-text)', letterSpacing: '-0.01em' }}
           >
-            Ibra Order System
+            Ibragim Flow
           </h1>
           <p className="text-[13px]" style={{ color: 'var(--color-muted)' }}>
             Войдите, чтобы продолжить
