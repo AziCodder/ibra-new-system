@@ -10,7 +10,7 @@ set -e
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get upgrade -y
-apt-get install -y ca-certificates curl gnupg git ufw wireguard
+apt-get install -y ca-certificates curl gnupg git ufw wireguard iputils-ping
 
 # Docker ставим из репозитория Docker, а не из Ubuntu: пакета
 # docker-compose-plugin в репозиториях 22.04 нет, и `apt install` на нём
