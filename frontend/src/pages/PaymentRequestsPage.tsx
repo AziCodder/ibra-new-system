@@ -8,7 +8,7 @@ import {
   type RemainingFilter,
 } from '../api/paymentRequests'
 import { fetchClients } from '../api/clients'
-import { fetchUsers } from '../api/users'
+import { fetchStaff } from '../api/users'
 import { useAuth } from '../contexts/AuthContext'
 import PaymentRequestDetailPanel from '../components/PaymentRequestDetailPanel'
 import ErrorState from '../components/ErrorState'
@@ -58,15 +58,16 @@ export default function PaymentRequestsPage() {
   })
 
   const { data: users } = useQuery({
-    queryKey: ['users'],
-    queryFn: fetchUsers,
+    queryKey: ['users', 'staff'],
+    queryFn: fetchStaff,
     enabled: user?.role === 'admin' || user?.role === 'observer',
   })
 
   const managers = users?.filter((u) => u.role === 'manager' || u.role === 'admin') ?? []
 
+  // A completed order's requests and payments are locked server-side.
   function canEdit(req: PaymentRequestSummary): boolean {
-    if (!user) return false
+    if (!user || req.order_status === 'completed') return false
     if (user.role === 'admin') return true
     if (user.role === 'manager') return user.id === req.manager_id
     return false

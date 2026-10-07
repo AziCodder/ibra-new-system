@@ -55,7 +55,7 @@ export default function ProductDetailPanel({
   const [quantity, setQuantity] = useState(product.quantity)
   const [price, setPrice] = useState(product.price)
   const [currency, setCurrency] = useState(product.currency)
-  const [exchangeRate, setExchangeRate] = useState(product.exchange_rate)
+  const [exchangeRate, setExchangeRate] = useState(product.exchange_rate ?? '')
   const [photo, setPhoto] = useState<UploadedFile | null>(
     product.photo_key ? { key: product.photo_key, filename: product.photo_key, size: 0 } : null
   )
@@ -71,7 +71,7 @@ export default function ProductDetailPanel({
         quantity: Number(quantity),
         price: Number(price),
         currency,
-        exchange_rate: currency === orderCurrency ? 1 : Number(exchangeRate),
+        exchange_rate: currency === orderCurrency ? 1 : Number(exchangeRate) > 0 ? Number(exchangeRate) : null,
         photo_key: photo?.key ?? null,
       }),
     onSuccess: () => {
@@ -102,14 +102,13 @@ export default function ProductDetailPanel({
   const shippedNum = Number(product.shipped_quantity ?? 0)
   const acceptedNum = Number(product.accepted_quantity ?? 0)
   const shipments = product.shipments ?? []
-  const rateNum = Number(product.exchange_rate) || 1
+  const rateNum = Number(product.exchange_rate)
   const isForeignCurrency = product.currency !== orderCurrency
   const canSave =
     supplierId !== '' &&
     name.trim() !== '' &&
     Number(quantity) > 0 &&
-    Number(price) >= 0 &&
-    (currency === orderCurrency || Number(exchangeRate) > 0)
+    Number(price) >= 0
 
   return (
     <div className="fixed inset-0 z-50" onClick={onClose}>
@@ -183,7 +182,7 @@ export default function ProductDetailPanel({
               <SummaryRow label="Количество" value={formatNumber(quantityNum)} />
               <SummaryRow label="Цена" value={`${formatNumber(priceNum)} ${product.currency}`} />
               <SummaryRow label="Итого" value={`${formatNumber(total)} ${product.currency}`} />
-              {isForeignCurrency && (
+              {isForeignCurrency && rateNum > 0 && (
                 <>
                   <SummaryRow label="Курс" value={`1 ${product.currency} = ${rateNum} ${orderCurrency}`} />
                   <SummaryRow

@@ -471,7 +471,7 @@ async def test_readiness_false_partial_shipment():
 
 @pytest.mark.asyncio
 async def test_readiness_true_fully_shipped_and_accepted():
-    """Product qty=50, all 50 accepted, no in_transit → ready."""
+    """Product qty=50, all 50 accepted, no in_transit, paid in full → ready."""
     try:
         async with async_session_factory() as session:
             client = Client(code="TSTPRFTR2", full_name="Ready Full")
@@ -507,6 +507,13 @@ async def test_readiness_true_fully_shipped_and_accepted():
                             currency="RUB",
                             exchange_rate=Decimal("1.000000"),
                         )
+            pr = PaymentRequest(order_id=order.id, created_by_id=mgr.id)
+            session.add(pr)
+            await session.commit()
+            await session.refresh(pr)
+            session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product.id, amount=Decimal("500.00")))
+            session.add(Payment(payment_request_id=pr.id, author_id=mgr.id, amount=Decimal("500.00"),
+                                currency="RUB", exchange_rate=Decimal("1.000000")))
             await session.commit()
 
         async with async_session_factory() as session:
@@ -572,3 +579,199 @@ async def test_readiness_false_in_transit_blocks_even_if_qty_covered():
         assert b.is_ready is False  # in_transit present even though qty is covered
     finally:
         await _cleanup("TSTPRFTR3", ["prftr3_mgr", "prftr3_adm"])
+
+
+# ── Payment-coverage readiness (правки 2026-10-01 п.1) ───────────────────────
+
+
+async def _fully_shipped_order(code: str, currency: str, products: list[tuple[str, str, str]]):
+    """An order whose every product is fully shipped and accepted — so logistics never
+    blocks readiness here and only payment coverage decides it.
+
+    `products` is a list of (quantity, price, product_currency).
+    """
+    async with async_session_factory() as session:
+        client = Client(code=code, full_name=f"Paid check {code}")
+        mgr = User(login=f"{code.lower()}_mgr", password_hash=hash_password("x"), role=UserRole.manager,
+                   full_name="PaidMgr")
+        sup = Supplier(name=f"PrftSupplier{code}")
+        session.add_all([client, mgr, sup])
+        await session.commit()
+        for o in (client, mgr, sup):
+            await session.refresh(o)
+
+        order = Order(number=f"{code}-1", client_id=client.id, manager_id=mgr.id,
+                      status=OrderStatus.in_progress, currency=currency)
+        session.add(order)
+        await session.commit()
+        await session.refresh(order)
+
+        created = []
+        for quantity, price, product_currency in products:
+            product = Product(order_id=order.id, supplier_id=sup.id, name="G", quantity=Decimal(quantity),
+                              price=Decimal(price), currency=product_currency)
+            session.add(product)
+            await session.commit()
+            await session.refresh(product)
+            await add_shipment(session, lines=[(product.id, Decimal(quantity))], order_id=order.id,
+                               created_by_id=mgr.id, tracking=f"{code}-{product.id}", ship_date=_NOW,
+                               status=LogisticsStatus.accepted)
+            created.append(product)
+        await session.commit()
+    return order, mgr, created
+
+
+async def _request_and_pay(order_id: int, author_id: int, product_id: int, requested: str,
+                           payments: list[tuple[str, str]], currency: str) -> None:
+    """One payment request for `requested` against the product, settled by (amount, rate) payments."""
+    async with async_session_factory() as session:
+        pr = PaymentRequest(order_id=order_id, created_by_id=author_id)
+        session.add(pr)
+        await session.commit()
+        await session.refresh(pr)
+        session.add(PaymentRequestItem(payment_request_id=pr.id, product_id=product_id, amount=Decimal(requested)))
+        for amount, rate in payments:
+            session.add(Payment(payment_request_id=pr.id, author_id=author_id, amount=Decimal(amount),
+                                currency=currency, exchange_rate=Decimal(rate)))
+        await session.commit()
+
+
+async def _is_ready(order_id: int) -> bool:
+    async with async_session_factory() as session:
+        return (await calculate_profit(order_id, session)).is_ready
+
+
+@pytest.mark.asyncio
+async def test_readiness_false_when_a_product_was_never_invoiced():
+    """The forgotten payment: one product has no payment request at all."""
+    try:
+        order, mgr, (paid, forgotten) = await _fully_shipped_order(
+            "TSTPAID1", "RUB", [("10", "100.00", "RUB"), ("5", "40.00", "RUB")]
+        )
+        await _request_and_pay(order.id, mgr.id, paid.id, "1000.00", [("1000.00", "1")], "RUB")
+
+        assert await _is_ready(order.id) is False
+    finally:
+        await _cleanup("TSTPAID1", ["tstpaid1_mgr"])
+
+
+@pytest.mark.asyncio
+async def test_readiness_false_when_a_product_is_only_partly_invoiced():
+    """Every request is settled, yet the product isn't covered — the gap check_can_complete's
+    request-level check alone could never see."""
+    try:
+        order, mgr, (product,) = await _fully_shipped_order("TSTPAID2", "RUB", [("10", "100.00", "RUB")])
+        await _request_and_pay(order.id, mgr.id, product.id, "600.00", [("600.00", "1")], "RUB")
+
+        assert await _is_ready(order.id) is False
+    finally:
+        await _cleanup("TSTPAID2", ["tstpaid2_mgr"])
+
+
+@pytest.mark.asyncio
+async def test_readiness_false_when_a_product_is_partly_paid():
+    try:
+        order, mgr, (product,) = await _fully_shipped_order("TSTPAID3", "RUB", [("10", "100.00", "RUB")])
+        await _request_and_pay(order.id, mgr.id, product.id, "1000.00", [("400.00", "1")], "RUB")
+
+        assert await _is_ready(order.id) is False
+    finally:
+        await _cleanup("TSTPAID3", ["tstpaid3_mgr"])
+
+
+@pytest.mark.asyncio
+async def test_readiness_compares_payments_in_the_products_currency():
+    """A CNY product in a RUB order, paid at 13.38 RUB per CNY.
+
+    1 000 of 5 400 CNY paid is not "paid", even though 1 000 * 13.38 = 13 380 RUB
+    exceeds 5 400 — the rate converts to the order's currency and must stay out of
+    the comparison. Paying the remaining 4 400 CNY makes the order ready.
+    """
+    try:
+        order, mgr, (product,) = await _fully_shipped_order("TSTPAID4", "RUB", [("100", "54.00", "CNY")])
+        await _request_and_pay(order.id, mgr.id, product.id, "5400.00", [("1000.00", "13.38")], "CNY")
+        assert await _is_ready(order.id) is False
+
+        async with async_session_factory() as session:
+            pr_id = (
+                await session.execute(select(PaymentRequest.id).where(PaymentRequest.order_id == order.id))
+            ).scalar_one()
+            session.add(Payment(payment_request_id=pr_id, author_id=mgr.id, amount=Decimal("4400.00"),
+                                currency="CNY", exchange_rate=Decimal("13.40")))
+            await session.commit()
+        assert await _is_ready(order.id) is True
+    finally:
+        await _cleanup("TSTPAID4", ["tstpaid4_mgr"])
+
+
+@pytest.mark.asyncio
+async def test_readiness_tolerates_a_cost_finer_than_a_cent():
+    """2.5 × 10.01 = 25.025 can only ever be requested and paid as 25.02."""
+    try:
+        order, mgr, (product,) = await _fully_shipped_order("TSTPAID5", "RUB", [("2.5", "10.01", "RUB")])
+        await _request_and_pay(order.id, mgr.id, product.id, "25.02", [("25.02", "1")], "RUB")
+
+        assert await _is_ready(order.id) is True
+    finally:
+        await _cleanup("TSTPAID5", ["tstpaid5_mgr"])
+
+
+@pytest.mark.asyncio
+async def test_readiness_free_product_needs_no_payment():
+    try:
+        order, mgr, _ = await _fully_shipped_order("TSTPAID6", "RUB", [("3", "0.00", "RUB")])
+
+        assert await _is_ready(order.id) is True
+    finally:
+        await _cleanup("TSTPAID6", ["tstpaid6_mgr"])
+
+
+@pytest.mark.asyncio
+async def test_blockers_name_what_keeps_the_profit_open():
+    """The profit block lists each reason, not a generic "not ready": a shipment in
+    transit, a product short on received quantity, and a product nobody invoiced."""
+    try:
+        async with async_session_factory() as session:
+            client = Client(code="TSTPAID7", full_name="Blockers")
+            mgr = User(login="tstpaid7_mgr", password_hash=hash_password("x"), role=UserRole.manager, full_name="M")
+            sup = Supplier(name="PrftSupplierTSTPAID7")
+            session.add_all([client, mgr, sup])
+            await session.commit()
+            for o in (client, mgr, sup):
+                await session.refresh(o)
+            order = Order(number="TSTPAID7-1", client_id=client.id, manager_id=mgr.id,
+                          status=OrderStatus.in_progress, currency="RUB")
+            session.add(order)
+            await session.commit()
+            await session.refresh(order)
+
+            remote = Product(order_id=order.id, supplier_id=sup.id, name="Пульт", quantity=Decimal("10"),
+                             price=Decimal("100.00"), currency="RUB")
+            case = Product(order_id=order.id, supplier_id=sup.id, name="Кейс", quantity=Decimal("1"),
+                           price=Decimal("800.00"), currency="RUB")
+            session.add_all([remote, case])
+            await session.commit()
+            for p in (remote, case):
+                await session.refresh(p)
+
+            await add_shipment(session, lines=[(remote.id, Decimal("7")), (case.id, Decimal("1"))],
+                               order_id=order.id, created_by_id=mgr.id, tracking="TSTPAID7-A", ship_date=_NOW,
+                               status=LogisticsStatus.accepted)
+            await add_shipment(session, lines=[(remote.id, Decimal("3"))], order_id=order.id,
+                               created_by_id=mgr.id, tracking="TSTPAID7-B", ship_date=_NOW,
+                               status=LogisticsStatus.in_transit)
+            await session.commit()
+
+        await _request_and_pay(order.id, mgr.id, remote.id, "1000.00", [("1000.00", "1")], "RUB")
+
+        async with async_session_factory() as session:
+            b = await calculate_profit(order.id, session)
+
+        assert b.is_ready is False
+        assert [(x.kind, x.product_name, x.amount, x.currency) for x in b.blockers] == [
+            ("in_transit", None, Decimal("1"), None),
+            ("not_received", "Пульт", Decimal("3.000"), None),
+            ("not_paid", "Кейс", Decimal("800.00000"), "RUB"),
+        ]
+    finally:
+        await _cleanup("TSTPAID7", ["tstpaid7_mgr"])

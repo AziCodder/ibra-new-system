@@ -12,7 +12,8 @@ async def check_can_complete(order_id: int, session: AsyncSession) -> bool:
     """Returns True when the order meets all criteria for completion (ТЗ §13).
 
     Conditions:
-    1. Logistics settled: no in_transit, every product fully accepted.
+    1. Profit is final (_check_readiness): no in_transit, every product fully
+       accepted and every product's cost fully covered by payments.
     2. All payment requests fully paid (remaining_amount = 0).
     """
     if not await _check_readiness(order_id, session):

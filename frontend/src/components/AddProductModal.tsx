@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createProduct } from '../api/products'
 import { fetchSuppliers } from '../api/suppliers'
 import FileUploader, { type UploadedFile } from './FileUploader'
-import CurrencyRateFields from './CurrencyRateFields'
+import { CurrencySelect } from './CurrencyRateFields'
 
 export default function AddProductModal({ orderId, orderCurrency, onClose }: { orderId: number; orderCurrency: string; onClose: () => void }) {
   const queryClient = useQueryClient()
@@ -14,14 +14,12 @@ export default function AddProductModal({ orderId, orderCurrency, onClose }: { o
   const [quantity, setQuantity] = useState('')
   const [price, setPrice] = useState('')
   const [currency, setCurrency] = useState(orderCurrency)
-  const [exchangeRate, setExchangeRate] = useState('')
   const [photo, setPhoto] = useState<UploadedFile | null>(null)
   const [error, setError] = useState('')
 
   const { data: suppliers } = useQuery({ queryKey: ['suppliers'], queryFn: fetchSuppliers })
 
-  const isForeignCurrency = currency !== orderCurrency
-
+  // No rate asked for: it takes no part in the profit (правки 2026-10-01 п.2).
   const mutation = useMutation({
     mutationFn: () =>
       createProduct(orderId, {
@@ -31,7 +29,6 @@ export default function AddProductModal({ orderId, orderCurrency, onClose }: { o
         quantity: Number(quantity),
         price: Number(price),
         currency,
-        exchange_rate: isForeignCurrency ? Number(exchangeRate) : 1,
         photo_key: photo?.key ?? null,
       }),
     onSuccess: () => {
@@ -45,8 +42,7 @@ export default function AddProductModal({ orderId, orderCurrency, onClose }: { o
     supplierId !== '' &&
     name.trim() !== '' &&
     Number(quantity) > 0 &&
-    Number(price) >= 0 &&
-    (!isForeignCurrency || Number(exchangeRate) > 0)
+    Number(price) >= 0
 
   return (
     <div
@@ -122,14 +118,7 @@ export default function AddProductModal({ orderId, orderCurrency, onClose }: { o
           </label>
         </div>
 
-        <CurrencyRateFields
-          orderCurrency={orderCurrency}
-          currency={currency}
-          onCurrencyChange={setCurrency}
-          exchangeRate={exchangeRate}
-          onExchangeRateChange={setExchangeRate}
-          amount={Number(quantity) * Number(price)}
-        />
+        <CurrencySelect orderCurrency={orderCurrency} currency={currency} onChange={setCurrency} />
 
         <label className="block mb-4">
           <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Поставщик</span>

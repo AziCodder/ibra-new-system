@@ -1,4 +1,5 @@
 from decimal import Decimal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -15,6 +16,13 @@ from app.services.profit import calculate_profit
 router = APIRouter(prefix="/api/orders", tags=["profit"])
 
 
+class ProfitBlockerOut(BaseModel):
+    kind: Literal["no_products", "in_transit", "not_received", "not_paid"]
+    product_name: str | None
+    amount: Decimal | None
+    currency: str | None
+
+
 class ProfitBreakdownOut(BaseModel):
     income: Decimal
     purchases: Decimal
@@ -23,6 +31,8 @@ class ProfitBreakdownOut(BaseModel):
     profit: Decimal
     currency: str
     is_ready: bool
+    # Why the totals aren't final yet — empty once is_ready.
+    blockers: list[ProfitBlockerOut]
     profit_pct: Decimal | None
     processing_days: int | None
 
@@ -53,6 +63,15 @@ async def get_order_profit(
         profit=breakdown.profit,
         currency=breakdown.currency,
         is_ready=breakdown.is_ready,
+        blockers=[
+            ProfitBlockerOut(
+                kind=blocker.kind,
+                product_name=blocker.product_name,
+                amount=blocker.amount,
+                currency=blocker.currency,
+            )
+            for blocker in breakdown.blockers
+        ],
         profit_pct=order.profit_pct,
         processing_days=order.processing_days,
     )

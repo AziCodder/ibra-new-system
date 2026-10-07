@@ -40,3 +40,8 @@ class Order(Base):
     processing_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_income: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     profit_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
+    # Set when an admin shares the profit out between participants
+    # (OrderCalculationParticipant). While set, the order is frozen for every
+    # role, admin included — see order_access.ensure_not_calculated.
+    calculated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    calculated_profit: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)

@@ -9,6 +9,7 @@ import ProductsTable from '../components/ProductsTable'
 import PaymentRequestsTab from '../components/PaymentRequestsTab'
 import LogisticsTab from '../components/LogisticsTab'
 import LedgerTab from '../components/LedgerTab'
+import CalculationTab from '../components/CalculationTab'
 import { useAuth } from '../contexts/AuthContext'
 import ProfitBlock from '../components/ProfitBlock'
 import Skeleton from '../components/Skeleton'
@@ -16,6 +17,7 @@ import ErrorState from '../components/ErrorState'
 import NotFound from '../components/NotFound'
 import FileUploader, { type UploadedFile } from '../components/FileUploader'
 import Tag, { type TagColor } from '../components/Tag'
+import { toast } from '../components/Toast'
 
 const MAX_ORDER_FILES = 5
 
@@ -25,7 +27,7 @@ const STATUS_BADGE: Record<OrderStatus, { label: string; color: TagColor }> = {
   cancelled: { label: 'Отменён', color: 'red' },
 }
 
-type TabKey = 'items' | 'payments' | 'logistics' | 'finance'
+type TabKey = 'items' | 'payments' | 'logistics' | 'finance' | 'calculation'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'items', label: 'Товары' },
@@ -33,6 +35,9 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'logistics', label: 'Логистика' },
   { key: 'finance', label: 'ДиР' },
 ]
+
+// Only a completed order can be calculated, so the tab exists only then.
+const COMPLETED_TABS: { key: TabKey; label: string }[] = [...TABS, { key: 'calculation', label: 'Расчёт' }]
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -109,8 +114,10 @@ export default function OrderDetailPage() {
       }
       return { previous }
     },
-    onError: (_err, _status, ctx) => {
+    onError: (err, _status, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(['order', orderId], ctx.previous)
+      // A mutation's own onError replaces the app-wide toast, so show it here.
+      toast(err instanceof Error ? err.message : 'Не удалось изменить статус заказа', 'error')
     },
     onSuccess: (updated) => {
       queryClient.setQueryData(['order', orderId], updated)
@@ -159,7 +166,14 @@ export default function OrderDetailPage() {
 
   const badge = STATUS_BADGE[order.status]
   const date = new Date(order.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: 'numeric' })
-  const canEdit = !!user && (user.role === 'admin' || (user.role === 'manager' && user.id === order.manager_id))
+  const isOwnerOrAdmin = !!user && (user.role === 'admin' || (user.role === 'manager' && user.id === order.manager_id))
+  // A calculated order is frozen for everyone, admin included, until the calculation is cancelled.
+  const frozen = order.is_calculated
+  // Completed: goods, payments, logistics, ДиР and files are locked server-side until reverted to work.
+  const completed = order.status === 'completed'
+  const canEdit = isOwnerOrAdmin && !frozen && !completed
+  const tabs = order.status === 'completed' ? COMPLETED_TABS : TABS
+  const currentTab = tabs.some((tab) => tab.key === activeTab) ? activeTab : 'items'
 
   return (
     <div className="p-4 sm:p-6">
@@ -174,7 +188,8 @@ export default function OrderDetailPage() {
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <Tag color={badge.color}>{badge.label}</Tag>
-          {isAdmin && (
+          {frozen && <Tag color="green">Рассчитан</Tag>}
+          {isAdmin && !frozen && (
             <button
               onClick={confirmDelete}
               disabled={deleteMutation.isPending}
@@ -209,7 +224,7 @@ export default function OrderDetailPage() {
         ) : (
           <span>
             {order.manager_name}
-            {isAdmin && (
+            {isAdmin && !frozen && (
               <button
                 onClick={() => setReassigning(true)}
                 className="ml-1.5 text-xs cursor-pointer underline"
@@ -226,8 +241,39 @@ export default function OrderDetailPage() {
         <span>{order.currency}</span>
       </div>
 
+      {frozen && (
+        <div
+          className="rounded-[8px] px-4 py-3 mb-4 text-sm flex items-center justify-between gap-3 flex-wrap"
+          style={{ background: 'var(--color-info-bg)', color: 'var(--color-info)', border: '1px solid var(--color-border)' }}
+        >
+          <span>
+            Заказ рассчитан и заморожен — изменения недоступны никому. Чтобы что-то изменить, администратор должен
+            отменить расчёт.
+          </span>
+          {currentTab !== 'calculation' && (
+            <button
+              onClick={() => setActiveTab('calculation')}
+              className="text-xs font-medium underline cursor-pointer"
+              style={{ color: 'var(--color-info)' }}
+            >
+              Открыть расчёт
+            </button>
+          )}
+        </div>
+      )}
+
+      {completed && !frozen && (
+        <div
+          className="rounded-[8px] px-4 py-3 mb-4 text-sm"
+          style={{ background: 'var(--color-surface-2)', color: 'var(--color-muted)', border: '1px solid var(--color-border)' }}
+        >
+          Заказ завершён — товары, оплаты, логистика, ДиР и файлы закрыты для изменений. Чтобы что-то изменить,
+          {isAdmin ? ' верните заказ в работу кнопкой ниже.' : ' попросите администратора вернуть заказ в работу.'}
+        </div>
+      )}
+
       {/* Status actions */}
-      {user && user.role !== 'observer' && (() => {
+      {user && user.role !== 'observer' && !frozen && (() => {
         const isAdmin = user.role === 'admin'
         const isOwner = user.role === 'manager' && user.id === order.manager_id
         const busy = statusMutation.isPending
@@ -266,7 +312,7 @@ export default function OrderDetailPage() {
         )
       })()}
 
-      {isAdmin ? (
+      {isAdmin && !frozen ? (
         editingDetails ? (
           <div
             className="rounded-[8px] p-4 mb-6"
@@ -320,7 +366,7 @@ export default function OrderDetailPage() {
         )
       )}
 
-      {canEdit && (
+      {isOwnerOrAdmin && (canEdit || order.file_keys.length > 0) && (
         <div className="mb-6">
           <div className="text-sm font-semibold mb-2" style={{ color: 'var(--color-text)' }}>
             Файлы заказа
@@ -328,6 +374,7 @@ export default function OrderDetailPage() {
           <FileUploader
             files={order.file_keys.map((key) => ({ key, filename: key, size: 0 }))}
             context="order"
+            readOnly={!canEdit}
             disabled={order.file_keys.length >= MAX_ORDER_FILES || addFileMutation.isPending}
             onUpload={(file) => addFileMutation.mutate(file)}
             onRemove={(key) => removeFileMutation.mutate(key)}
@@ -338,14 +385,14 @@ export default function OrderDetailPage() {
       <ProfitBlock orderId={orderId} />
 
       <div className="flex gap-1 overflow-x-auto mb-5" style={{ borderBottom: '1px solid var(--color-border)' }}>
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className="px-4 py-3 text-sm font-medium cursor-pointer whitespace-nowrap transition-colors"
             style={{
-              color: activeTab === tab.key ? 'var(--color-primary)' : 'var(--color-muted)',
-              borderBottom: activeTab === tab.key ? '2px solid var(--color-primary)' : '2px solid transparent',
+              color: currentTab === tab.key ? 'var(--color-primary)' : 'var(--color-muted)',
+              borderBottom: currentTab === tab.key ? '2px solid var(--color-primary)' : '2px solid transparent',
               marginBottom: -1,
             }}
           >
@@ -354,22 +401,27 @@ export default function OrderDetailPage() {
         ))}
       </div>
 
-      {activeTab === 'items' && <ProductsTable orderId={order.id} orderCurrency={order.currency} canEdit={canEdit} />}
-      {activeTab === 'payments' && (
+      {currentTab === 'items' && <ProductsTable orderId={order.id} orderCurrency={order.currency} canEdit={canEdit} />}
+      {currentTab === 'payments' && (
         <PaymentRequestsTab orderId={order.id} clientId={order.client_id} canEdit={canEdit} />
       )}
-      {activeTab === 'logistics' && (
+      {currentTab === 'logistics' && (
         <LogisticsTab
           orderId={order.id}
           orderNumber={order.number}
           canEdit={canEdit}
+          canNotify={isOwnerOrAdmin}
           isAdmin={user?.role === 'admin'}
           orderCurrency={order.currency}
+          readOnly={frozen}
         />
       )}
-      {activeTab === 'finance' && <LedgerTab orderId={order.id} canEdit={canEdit} orderCurrency={order.currency} />}
+      {currentTab === 'finance' && <LedgerTab orderId={order.id} canEdit={canEdit} orderCurrency={order.currency} />}
+      {currentTab === 'calculation' && (
+        <CalculationTab orderId={order.id} orderNumber={order.number} isAdmin={isAdmin} />
+      )}
 
-      <NotesSection orderId={order.id} />
+      <NotesSection orderId={order.id} readOnly={frozen} />
     </div>
   )
 }

@@ -100,8 +100,10 @@ async def test_snapshot_ready_writes_metrics():
             await session.commit()
             await session.refresh(order)
 
+            # Price 0: nothing to pay for, so the order is ready without any payment
+            # and the whole income is profit.
             product = Product(order_id=order.id, supplier_id=sup.id, name="G",
-                              quantity=Decimal("20.000"), price=Decimal("10.00"), currency="RUB")
+                              quantity=Decimal("20.000"), price=Decimal("0.00"), currency="RUB")
             session.add(product)
             await session.commit()
             await session.refresh(product)
@@ -168,8 +170,9 @@ async def test_snapshot_zero_income_gives_zero_pct():
             await session.commit()
             await session.refresh(order)
 
+            # Price 0: ready without any payment, and no purchases to skew the zero income.
             product = Product(order_id=order.id, supplier_id=sup.id, name="G",
-                              quantity=Decimal("10.000"), price=Decimal("1.00"), currency="RUB")
+                              quantity=Decimal("10.000"), price=Decimal("0.00"), currency="RUB")
             session.add(product)
             await session.commit()
             await session.refresh(product)

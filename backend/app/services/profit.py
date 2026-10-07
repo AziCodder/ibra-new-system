@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,19 @@ from app.models.order import Order
 from app.models.payment import Payment
 from app.models.payment_request import PaymentRequest
 from app.models.product import Product
+from app.services.product_payment_summary import get_unpaid_products
+
+
+@dataclass(frozen=True)
+class ReadinessBlocker:
+    """One reason the order's profit isn't final yet."""
+
+    kind: Literal["no_products", "in_transit", "not_received", "not_paid"]
+    product_name: str | None = None
+    # in_transit: shipments still on the way; not_received: quantity not yet
+    # accepted; not_paid: cost not yet covered, in `currency`.
+    amount: Decimal | None = None
+    currency: str | None = None
 
 
 @dataclass
@@ -20,49 +34,72 @@ class ProfitBreakdown:
     other_expenses: Decimal
     profit: Decimal
     currency: str
-    is_ready: bool
+    blockers: list[ReadinessBlocker]
+
+    @property
+    def is_ready(self) -> bool:
+        return not self.blockers
 
 
-async def _check_readiness(order_id: int, session: AsyncSession) -> bool:
-    """Return True only when the order is fully received and nothing is still in transit.
+async def get_readiness_blockers(order_id: int, session: AsyncSession) -> list[ReadinessBlocker]:
+    """Everything that keeps the order's profit from being final; empty means ready.
 
-    Conditions (ТЗ §11):
+    Conditions (ТЗ §11, расширено правками 2026-10-01 п.1):
     1. The order has at least one product.
     2. No logistics entries are in_transit status (everything has been settled).
     3. For every product the sum of accepted logistics quantities >= product quantity.
+    4. For every product the amount paid against it covers its full cost.
     """
-    has_products = (
-        await session.execute(select(Product.id).where(Product.order_id == order_id).limit(1))
-    ).scalar_one_or_none()
-    if has_products is None:
-        return False
+    products = (
+        await session.execute(
+            select(Product.id, Product.name, Product.quantity)
+            .where(Product.order_id == order_id)
+            .order_by(Product.id)
+        )
+    ).all()
+    if not products:
+        return [ReadinessBlocker("no_products")]
 
+    blockers: list[ReadinessBlocker] = []
     in_transit = (
         await session.execute(
-            select(Logistics.id)
+            select(func.count())
+            .select_from(Logistics)
             .where(Logistics.order_id == order_id, Logistics.status == LogisticsStatus.in_transit)
-            .limit(1)
         )
-    ).scalar_one_or_none()
-    if in_transit is not None:
-        return False
+    ).scalar_one()
+    if in_transit:
+        blockers.append(ReadinessBlocker("in_transit", amount=Decimal(in_transit)))
 
-    # Correlated subquery: accepted shipped quantity per product
-    shipped_sub = (
-        select(func.coalesce(func.sum(LogisticsItem.quantity), Decimal("0")))
-        .join(Logistics, LogisticsItem.logistics_id == Logistics.id)
-        .where(LogisticsItem.product_id == Product.id, Logistics.status == LogisticsStatus.accepted)
-        .correlate(Product)
-        .scalar_subquery()
+    accepted = dict(
+        (
+            await session.execute(
+                select(LogisticsItem.product_id, func.sum(LogisticsItem.quantity))
+                .join(Logistics, LogisticsItem.logistics_id == Logistics.id)
+                .where(
+                    LogisticsItem.product_id.in_([p.id for p in products]),
+                    Logistics.status == LogisticsStatus.accepted,
+                )
+                .group_by(LogisticsItem.product_id)
+            )
+        ).all()
     )
-    undershipped = (
-        await session.execute(
-            select(Product.id)
-            .where(Product.order_id == order_id, shipped_sub < Product.quantity)
-            .limit(1)
+    for product in products:
+        received = accepted.get(product.id, Decimal("0"))
+        if received < product.quantity:
+            blockers.append(
+                ReadinessBlocker("not_received", product_name=product.name, amount=product.quantity - received)
+            )
+
+    for unpaid in await get_unpaid_products(session, [order_id]):
+        blockers.append(
+            ReadinessBlocker("not_paid", product_name=unpaid.name, amount=unpaid.missing, currency=unpaid.currency)
         )
-    ).scalar_one_or_none()
-    return undershipped is None
+    return blockers
+
+
+async def _check_readiness(order_id: int, session: AsyncSession) -> bool:
+    return not await get_readiness_blockers(order_id, session)
 
 
 async def _calculate_purchases(order_id: int, session: AsyncSession) -> Decimal:
@@ -134,8 +171,6 @@ async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakd
         await session.execute(select(Order.currency).where(Order.id == order_id))
     ).scalar_one()
 
-    is_ready = await _check_readiness(order_id, session)
-
     return ProfitBreakdown(
         income=income,
         purchases=purchases,
@@ -143,5 +178,5 @@ async def calculate_profit(order_id: int, session: AsyncSession) -> ProfitBreakd
         other_expenses=other_expenses,
         profit=income - purchases - logistics - other_expenses,
         currency=currency,
-        is_ready=is_ready,
+        blockers=await get_readiness_blockers(order_id, session),
     )

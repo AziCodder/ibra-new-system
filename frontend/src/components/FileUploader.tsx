@@ -28,10 +28,12 @@ interface FileUploaderProps {
   onUpload: (file: UploadedFile) => void
   onRemove: (key: string) => void
   disabled?: boolean
+  /** Only list the files — no drop zone, no removal. */
+  readOnly?: boolean
   context?: FileUploadContext
 }
 
-export default function FileUploader({ files, onUpload, onRemove, disabled, context }: FileUploaderProps) {
+export default function FileUploader({ files, onUpload, onRemove, disabled, readOnly, context }: FileUploaderProps) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
@@ -89,27 +91,31 @@ export default function FileUploader({ files, onUpload, onRemove, disabled, cont
 
   return (
     <div>
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => !disabled && inputRef.current?.click()}
-        className="rounded-lg p-6 text-center text-sm transition-colors cursor-pointer"
-        style={{
-          border: `2px dashed ${dragging ? 'var(--color-primary)' : 'var(--color-border)'}`,
-          background: dragging ? 'var(--color-primary-bg)' : 'var(--color-surface-2)',
-          color: 'var(--color-muted)',
-          opacity: disabled ? 0.5 : 1,
-        }}
-      >
-        {uploading ? 'Загрузка...' : 'Перетащите файл или нажмите для выбора'}
-        <input ref={inputRef} type="file" onChange={handleFileSelect} className="hidden" />
-      </div>
+      {!readOnly && (
+        <>
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => !disabled && inputRef.current?.click()}
+            className="rounded-lg p-6 text-center text-sm transition-colors cursor-pointer"
+            style={{
+              border: `2px dashed ${dragging ? 'var(--color-primary)' : 'var(--color-border)'}`,
+              background: dragging ? 'var(--color-primary-bg)' : 'var(--color-surface-2)',
+              color: 'var(--color-muted)',
+              opacity: disabled ? 0.5 : 1,
+            }}
+          >
+            {uploading ? 'Загрузка...' : 'Перетащите файл или нажмите для выбора'}
+            <input ref={inputRef} type="file" onChange={handleFileSelect} className="hidden" />
+          </div>
 
-      {maxMB && (
-        <div className="mt-1.5 text-xs" style={{ color: 'var(--color-faint)' }}>
-          До {maxMB} МБ на файл
-        </div>
+          {maxMB && (
+            <div className="mt-1.5 text-xs" style={{ color: 'var(--color-faint)' }}>
+              До {maxMB} МБ на файл
+            </div>
+          )}
+        </>
       )}
 
       {error && (
@@ -117,7 +123,7 @@ export default function FileUploader({ files, onUpload, onRemove, disabled, cont
       )}
 
       {files.length > 0 && (
-        <ul className="mt-3 space-y-1">
+        <ul className={readOnly ? 'space-y-1' : 'mt-3 space-y-1'}>
           {files.map((f) => (
             <li
               key={f.key}
@@ -135,7 +141,7 @@ export default function FileUploader({ files, onUpload, onRemove, disabled, cont
               </a>
               <span className="flex items-center gap-3">
                 <span style={{ color: 'var(--color-muted)' }}>{formatSize(f.size)}</span>
-                {!disabled && (
+                {!disabled && !readOnly && (
                   <button
                     onClick={() => onRemove(f.key)}
                     className="text-xs cursor-pointer"

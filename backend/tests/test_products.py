@@ -303,27 +303,29 @@ async def test_create_product_defaults_currency_to_order_currency():
 
 
 @pytest.mark.asyncio
-async def test_create_product_rejects_currency_mismatch():
+async def test_create_product_in_foreign_currency_without_a_rate():
+    """The rate is optional (правки 2026-10-01 п.2): profit never uses it, so a
+    foreign-currency product is saved with no rate rather than rejected."""
     client, owner, other, observer, supplier, order = await _setup()
     try:
         async with async_session_factory() as session:
-            with pytest.raises(HTTPException) as exc_info:
-                await create_product(
-                    order.id,
-                    ProductCreate(
-                        supplier_id=supplier.id, name="Widget", quantity=Decimal("1"), price=Decimal("1"),
-                        currency="CNY",
-                    ),
-                    owner,
-                    session,
-                )
-            assert exc_info.value.status_code == 422
+            created = await create_product(
+                order.id,
+                ProductCreate(
+                    supplier_id=supplier.id, name="Widget", quantity=Decimal("1"), price=Decimal("1"),
+                    currency="CNY",
+                ),
+                owner,
+                session,
+            )
+            assert created.currency == "CNY"
+            assert created.exchange_rate is None
     finally:
         await _cleanup(client.id, [owner.id, other.id, observer.id], supplier.id)
 
 
 @pytest.mark.asyncio
-async def test_update_product_to_foreign_currency_requires_an_exchange_rate():
+async def test_update_product_to_foreign_currency_drops_the_rate_unless_given():
     client, owner, other, observer, supplier, order = await _setup()
     try:
         async with async_session_factory() as session:
@@ -337,10 +339,10 @@ async def test_update_product_to_foreign_currency_requires_an_exchange_rate():
             assert created.exchange_rate == Decimal("1")
 
         async with async_session_factory() as session:
-            with pytest.raises(HTTPException) as exc_info:
-                await update_product(order.id, created.id, ProductUpdate(currency="CNY"), owner, session)
-            assert exc_info.value.status_code == 422
-            assert "Exchange rate is required" in exc_info.value.detail
+            # The stored 1 described USD, not CNY — it isn't carried over.
+            switched = await update_product(order.id, created.id, ProductUpdate(currency="CNY"), owner, session)
+            assert switched.currency == "CNY"
+            assert switched.exchange_rate is None
 
         async with async_session_factory() as session:
             updated = await update_product(
@@ -383,17 +385,16 @@ async def test_create_product_in_a_currency_other_than_the_orders():
             assert created.exchange_rate == Decimal("7.218500")
 
         async with async_session_factory() as session:
-            with pytest.raises(HTTPException) as exc_info:
-                await create_product(
-                    order.id,
-                    ProductCreate(
-                        supplier_id=supplier.id, name="No rate", quantity=Decimal("1"), price=Decimal("1"),
-                        currency="RUB",
-                    ),
-                    owner,
-                    session,
-                )
-            assert exc_info.value.status_code == 422
+            no_rate = await create_product(
+                order.id,
+                ProductCreate(
+                    supplier_id=supplier.id, name="No rate", quantity=Decimal("1"), price=Decimal("1"),
+                    currency="RUB",
+                ),
+                owner,
+                session,
+            )
+            assert no_rate.exchange_rate is None
 
         async with async_session_factory() as session:
             # A rate other than 1 makes no sense in the order's own currency.

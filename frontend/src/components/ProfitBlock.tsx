@@ -1,11 +1,28 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchOrderProfit } from '../api/profit'
+import { fetchOrderProfit, type ProfitBlocker } from '../api/profit'
 import { SkeletonMetricRow } from './Skeleton'
 import ErrorState from './ErrorState'
 
 function fmtAmount(val: string, currency: string) {
   const n = parseFloat(val)
   return `${n.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ${currency}`
+}
+
+function fmtNumber(val: string | null) {
+  return parseFloat(val ?? '0').toLocaleString('ru-RU', { maximumFractionDigits: 3 })
+}
+
+function describeBlocker(blocker: ProfitBlocker): string {
+  switch (blocker.kind) {
+    case 'no_products':
+      return 'В заказе нет товаров'
+    case 'in_transit':
+      return `Отправок в пути: ${fmtNumber(blocker.amount)} — примите их или отмените`
+    case 'not_received':
+      return `«${blocker.product_name}» — не принято ${fmtNumber(blocker.amount)} шт.`
+    case 'not_paid':
+      return `«${blocker.product_name}» — не оплачено ${fmtAmount(blocker.amount ?? '0', blocker.currency ?? '')}`
+  }
 }
 
 function MetricCard({
@@ -77,9 +94,6 @@ export default function ProfitBlock({ orderId }: { orderId: number }) {
       {!isLoading && !isError && data && !data.is_ready && (
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
             background: 'var(--color-warning-bg)',
             border: '1px solid rgba(245,158,11,.3)',
             borderRadius: 'var(--radius)',
@@ -88,7 +102,12 @@ export default function ProfitBlock({ orderId }: { orderId: number }) {
             fontSize: 13,
           }}
         >
-          Итоги посчитаются после приёмки всей логистики
+          <div>Итоги посчитаются после приёмки всей логистики и полной оплаты всех товаров. Сейчас мешает:</div>
+          <ul style={{ margin: '6px 0 0', paddingLeft: 18, listStyle: 'disc' }}>
+            {data.blockers.map((blocker, i) => (
+              <li key={i}>{describeBlocker(blocker)}</li>
+            ))}
+          </ul>
         </div>
       )}
 

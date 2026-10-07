@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
@@ -24,12 +25,14 @@ from app.schemas.order import (
     OrderUpdate,
 )
 from app.services.action_log import log_action
+from app.services.order_access import ensure_not_calculated
 from app.services.order_access import get_order_for_write as _get_order_for_write
 from app.services.order_completion import check_can_complete
 from app.services.order_dependencies import order_dependency_breakdown
 from app.services.order_metrics import snapshot_order_metrics
 from app.services.order_number import generate_order_number
-from app.services.order_payment_summary import get_orders_payment_totals
+from app.services.order_payment_summary import OrderPaymentTotals, get_orders_payment_totals
+from app.services.product_payment_summary import get_unpaid_products
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -38,9 +41,9 @@ def _to_order_out(
     order: Order,
     client_name: str,
     manager_name: str,
-    payment_totals: tuple[Decimal, Decimal] | None = None,
+    payment_totals: OrderPaymentTotals | None = None,
+    unpaid_products: int = 0,
 ) -> OrderOut:
-    requested_amount, paid_amount = payment_totals if payment_totals else (None, None)
     return OrderOut(
         id=order.id,
         number=order.number,
@@ -58,8 +61,12 @@ def _to_order_out(
         processing_days=order.processing_days,
         total_income=order.total_income,
         profit_amount=order.profit_amount,
-        requested_amount=requested_amount,
-        paid_amount=paid_amount,
+        requested_amount=payment_totals.requested if payment_totals else None,
+        paid_amount=payment_totals.paid if payment_totals else None,
+        payment_currency=payment_totals.currency if payment_totals else None,
+        unpaid_products=unpaid_products,
+        is_calculated=order.calculated_at is not None,
+        calculated_at=order.calculated_at,
     )
 
 
@@ -113,6 +120,7 @@ async def list_orders(
     client_id: int | None = None,
     status: OrderStatus | None = None,
     manager_id: int | None = None,
+    is_calculated: bool | None = None,
     search: str | None = None,
     sort_by: Literal["created_at", "number", "manual"] = "created_at",
     sort_order: Literal["asc", "desc"] = "desc",
@@ -132,6 +140,8 @@ async def list_orders(
         filters.append(Order.status == status)
     if manager_id is not None:
         filters.append(Order.manager_id == manager_id)
+    if is_calculated is not None:
+        filters.append(Order.calculated_at.is_not(None) if is_calculated else Order.calculated_at.is_(None))
     if search:
         like = f"%{search.strip()}%"
         filters.append(or_(Order.number.ilike(like), Client.full_name.ilike(like)))
@@ -170,8 +180,9 @@ async def list_orders(
 
     order_ids = [order.id for order, _, _ in rows]
     payment_totals = await get_orders_payment_totals(session, order_ids)
+    unpaid = Counter(product.order_id for product in await get_unpaid_products(session, order_ids))
     items = [
-        _to_order_out(order, client_name, manager_name, payment_totals.get(order.id))
+        _to_order_out(order, client_name, manager_name, payment_totals.get(order.id), unpaid[order.id])
         for order, client_name, manager_name in rows
     ]
 
@@ -277,7 +288,7 @@ async def get_order_stats(
     in_progress_ids_query = select(Order.id).where(*base_filters, Order.status == OrderStatus.in_progress)
     in_progress_ids = [row[0] for row in (await session.execute(in_progress_ids_query)).all()]
     payment_totals = await get_orders_payment_totals(session, in_progress_ids)
-    waiting_payment_count = sum(1 for requested, paid in payment_totals.values() if requested - paid > 0)
+    waiting_payment_count = sum(1 for totals in payment_totals.values() if totals.requested - totals.paid > 0)
 
     async def profit_sum_for(start: datetime, end: datetime) -> dict[str, Decimal]:
         rows = (
@@ -338,7 +349,8 @@ async def get_order(
     if user.role == UserRole.manager and order.manager_id != user.id:
         raise HTTPException(status_code=404, detail="Order not found")
     payment_totals = await get_orders_payment_totals(session, [order.id])
-    return _to_order_out(order, client_name, manager_name, payment_totals.get(order.id))
+    unpaid_products = len(await get_unpaid_products(session, [order.id]))
+    return _to_order_out(order, client_name, manager_name, payment_totals.get(order.id), unpaid_products)
 
 
 @router.patch("/{order_id}", response_model=OrderOut)
@@ -358,6 +370,7 @@ async def update_order(
     if not row:
         raise HTTPException(status_code=404, detail="Order not found")
     order, client_name, manager_name = row
+    ensure_not_calculated(order)
 
     order.details = body.details
 
@@ -418,6 +431,10 @@ async def set_order_status(
     if current == target:
         return _to_order_out(order, client_name, manager_name)
 
+    # Reverting a calculated order to in-progress would reopen everything the
+    # calculation froze, so it has to be cancelled first.
+    ensure_not_calculated(order)
+
     if current == OrderStatus.completed and target == OrderStatus.cancelled:
         raise HTTPException(status_code=409, detail="A completed order cannot be cancelled")
 
@@ -427,7 +444,7 @@ async def set_order_status(
         if not await check_can_complete(order_id, session):
             raise HTTPException(
                 status_code=409,
-                detail="Cannot complete: not all logistics accepted or payment requests not fully paid",
+                detail="Cannot complete: not all logistics accepted or not all products fully paid",
             )
 
     if (

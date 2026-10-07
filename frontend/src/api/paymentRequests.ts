@@ -1,3 +1,5 @@
+import type { OrderStatus } from './orders'
+
 export type PaymentRequestPriority = 'low' | 'normal' | 'urgent'
 
 export interface PaymentRequestItem {
@@ -73,6 +75,7 @@ export async function deletePaymentRequest(orderId: number, requestId: number): 
 
 export interface PaymentRequestSummary extends PaymentRequest {
   order_number: string
+  order_status: OrderStatus
   client_name: string
   manager_name: string
   manager_id: number

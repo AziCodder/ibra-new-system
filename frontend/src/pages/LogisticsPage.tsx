@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { fetchAllLogistics, type LogisticsSummary, type LogisticsStatus } from '../api/logistics'
 import { fetchClients } from '../api/clients'
-import { fetchUsers } from '../api/users'
+import { fetchStaff } from '../api/users'
 import { useAuth } from '../contexts/AuthContext'
 import LogisticsDetailPanel from '../components/LogisticsDetailPanel'
 import CreateLogisticsFlow from '../components/CreateLogisticsFlow'
@@ -63,19 +63,24 @@ export default function LogisticsPage() {
   })
 
   const { data: users } = useQuery({
-    queryKey: ['users'],
-    queryFn: fetchUsers,
+    queryKey: ['users', 'staff'],
+    queryFn: fetchStaff,
     enabled: user?.role === 'admin' || user?.role === 'observer',
   })
 
   const managers = users?.filter((u) => u.role === 'manager' || u.role === 'admin') ?? []
   const isAdmin = user?.role === 'admin'
 
-  function canEdit(lg: LogisticsSummary): boolean {
+  function isOwnerOrAdmin(lg: LogisticsSummary): boolean {
     if (!user) return false
     if (user.role === 'admin') return true
     if (user.role === 'manager') return user.id === lg.manager_id
     return false
+  }
+
+  // A completed order's records are locked server-side (only reverting it to work unlocks them).
+  function canEdit(lg: LogisticsSummary): boolean {
+    return isOwnerOrAdmin(lg) && lg.order_status !== 'completed'
   }
 
   return (
@@ -258,6 +263,7 @@ export default function LogisticsPage() {
           orderNumber={selected.order_number}
           logistics={selected}
           canEdit={canEdit(selected)}
+          canNotify={isOwnerOrAdmin(selected)}
           isAdmin={isAdmin ?? false}
           orderCurrency={selected.order_currency}
           onClose={() => setSelectedId(null)}

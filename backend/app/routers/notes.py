@@ -8,6 +8,7 @@ from app.models.order import Order
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
 from app.schemas.note import NoteCreate, NoteOut
+from app.services.order_access import ensure_not_calculated
 
 router = APIRouter(prefix="/api/orders/{order_id}/notes", tags=["notes"])
 
@@ -57,7 +58,8 @@ async def create_note(
     session: AsyncSession = Depends(get_session),
 ):
     # Per ТЗ §9, an observer may add order notes (same allowance as logistics comments).
-    await _get_visible_order(order_id, user, session)
+    order = await _get_visible_order(order_id, user, session)
+    ensure_not_calculated(order)
 
     note = Note(order_id=order_id, author_id=user.id, text=body.text)
     session.add(note)

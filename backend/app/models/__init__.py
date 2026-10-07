@@ -5,6 +5,7 @@ from app.models.logistics import Logistics, LogisticsItem
 from app.models.logistics_comment import LogisticsComment
 from app.models.note import Note
 from app.models.order import Order
+from app.models.order_calculation import OrderCalculationParticipant
 from app.models.order_sort_position import OrderSortPosition
 from app.models.payment import Payment
 from app.models.payment_request import PaymentRequest, PaymentRequestItem
@@ -24,6 +25,7 @@ __all__ = [
     "LogisticsItem",
     "Note",
     "Order",
+    "OrderCalculationParticipant",
     "OrderSortPosition",
     "Payment",
     "PaymentRequest",

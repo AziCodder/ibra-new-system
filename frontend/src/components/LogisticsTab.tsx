@@ -31,14 +31,19 @@ export default function LogisticsTab({
   orderId,
   orderNumber,
   canEdit,
+  canNotify,
   isAdmin,
   orderCurrency,
+  readOnly = false,
 }: {
   orderId: number
   orderNumber: string
   canEdit: boolean
+  canNotify: boolean
   isAdmin: boolean
   orderCurrency: string
+  /** The order is frozen — not even comments may be added. */
+  readOnly?: boolean
 }) {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -144,8 +149,10 @@ export default function LogisticsTab({
           orderNumber={orderNumber}
           logistics={selected}
           canEdit={canEdit}
+          canNotify={canNotify}
           isAdmin={isAdmin}
           orderCurrency={orderCurrency}
+          readOnly={readOnly}
           onClose={() => setSelectedId(null)}
         />
       )}

@@ -12,8 +12,8 @@ const KNOWN_MESSAGES: Record<string, string> = {
   'Only admins can revert a cancelled order': 'Только администратор может вернуть отменённый заказ в работу',
   'Only admins can revert a completed order': 'Только администратор может вернуть завершённый заказ в работу',
   'A completed order cannot be cancelled': 'Завершённый заказ нельзя отменить — сначала верните его в работу',
-  'Cannot complete: not all logistics accepted or payment requests not fully paid':
-    'Нельзя завершить заказ — не вся логистика принята или не все запросы на оплату оплачены полностью',
+  'Cannot complete: not all logistics accepted or not all products fully paid':
+    'Нельзя завершить заказ — не вся логистика принята или не все товары оплачены полностью',
 }
 
 const DEPENDENCY_LABELS: Record<string, string> = {
@@ -38,6 +38,13 @@ export interface Order {
   created_at: string
   requested_amount: string | null
   paid_amount: string | null
+  /** Currency of requested/paid — the payment requests', not the order's; null when they differ. */
+  payment_currency: string | null
+  /** Products no payment covers yet, including never-invoiced ones the amounts above can't see. */
+  unpaid_products: number
+  /** Profit shared out between participants — the whole order is frozen until it's cancelled. */
+  is_calculated: boolean
+  calculated_at: string | null
 }
 
 export interface OrderListResponse {
@@ -55,6 +62,7 @@ export interface OrderFilters {
   client_id?: number
   status?: OrderStatus
   manager_id?: number
+  is_calculated?: boolean
   search?: string
   sort_by?: OrderSortBy
   sort_order?: OrderSortOrder
@@ -67,6 +75,7 @@ export async function fetchOrders(filters: OrderFilters = {}): Promise<OrderList
   if (filters.client_id != null) params.set('client_id', String(filters.client_id))
   if (filters.status) params.set('status', filters.status)
   if (filters.manager_id != null) params.set('manager_id', String(filters.manager_id))
+  if (filters.is_calculated != null) params.set('is_calculated', String(filters.is_calculated))
   if (filters.search) params.set('search', filters.search)
   if (filters.sort_by) params.set('sort_by', filters.sort_by)
   if (filters.sort_order) params.set('sort_order', filters.sort_order)

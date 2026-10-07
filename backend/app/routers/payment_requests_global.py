@@ -16,6 +16,7 @@ from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
 from app.schemas.payment import PaymentCreate, PaymentOut
 from app.schemas.payment_request import PaymentRequestItemOut, PaymentRequestSummaryOut
+from app.services.order_access import ensure_not_calculated
 from app.services.payment_notifications import notify_payment_recorded
 from app.services.payment_remaining import get_payment_request_currency, get_payment_request_paid
 
@@ -65,6 +66,7 @@ async def _to_summary_out(
         items=items,
         created_at=request.created_at,
         order_number=order.number,
+        order_status=order.status,
         client_name=client.full_name,
         manager_name=manager.full_name,
         manager_id=order.manager_id,
@@ -133,10 +135,10 @@ async def add_payment_global(
     if not pr:
         raise HTTPException(status_code=404, detail="Payment request not found")
 
-    if user.role == UserRole.manager:
-        order = (await session.execute(select(Order).where(Order.id == pr.order_id))).scalar_one()
-        if order.manager_id != user.id:
-            raise HTTPException(status_code=404, detail="Payment request not found")
+    order = (await session.execute(select(Order).where(Order.id == pr.order_id))).scalar_one()
+    if user.role == UserRole.manager and order.manager_id != user.id:
+        raise HTTPException(status_code=404, detail="Payment request not found")
+    ensure_not_calculated(order)
 
     payment = Payment(
         payment_request_id=request_id,

@@ -4,6 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 from app.core.currency import Currency
+from app.models.order import OrderStatus
 from app.models.payment_request import PaymentRequestPriority
 
 MAX_FILES = 3
@@ -64,6 +65,7 @@ class PaymentRequestOut(BaseModel):
 
 class PaymentRequestSummaryOut(PaymentRequestOut):
     order_number: str
+    order_status: OrderStatus
     client_name: str
     manager_name: str
     manager_id: int

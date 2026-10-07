@@ -37,6 +37,13 @@ export async function fetchUsers(): Promise<User[]> {
   return res.json()
 }
 
+/** Admins and managers — open to admins and observers, for filtering by who runs an order. */
+export async function fetchStaff(): Promise<User[]> {
+  const res = await fetch('/api/users/staff', { credentials: 'include' })
+  if (!res.ok) throw new Error('Не удалось загрузить список работников')
+  return res.json()
+}
+
 export async function createUser(data: UserCreate): Promise<User> {
   const res = await fetch('/api/users/', {
     method: 'POST',

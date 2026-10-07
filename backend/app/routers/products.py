@@ -61,7 +61,7 @@ def _to_product_out(
     )
 
 
-def _resolve_exchange_rate(currency: str, order_currency: str, rate: Decimal | None) -> Decimal:
+def _resolve_exchange_rate(currency: str, order_currency: str, rate: Decimal | None) -> Decimal | None:
     """Normalise a product's rate to the order's currency, or raise 422.
 
     The rate reads "units of the order's currency per 1 unit of the product's"
@@ -69,8 +69,9 @@ def _resolve_exchange_rate(currency: str, order_currency: str, rate: Decimal | N
     currency multiplies by it.
 
     A product priced in the order's own currency is always rate 1 — accepting
-    anything else there would silently distort the profit calculation. A product
-    priced in another currency has no sensible default, so the rate is required.
+    anything else there would be a contradiction. For another currency the rate
+    is optional (None = not given): profit values purchases at each payment's own
+    rate, so the product's rate only feeds the "total in the order's currency".
     """
     if currency == order_currency:
         if rate is not None and rate != Decimal("1"):
@@ -79,12 +80,6 @@ def _resolve_exchange_rate(currency: str, order_currency: str, rate: Decimal | N
                 detail=f"Exchange rate must be 1 when the product is priced in the order's currency ({order_currency})",
             )
         return Decimal("1")
-
-    if rate is None:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Exchange rate is required: product currency {currency} differs from the order's {order_currency}",
-        )
     return rate
 
 
@@ -208,8 +203,8 @@ async def update_product(
             new_rate = updates["exchange_rate"]
         elif new_currency != product.currency:
             # The stored rate described the *old* currency and says nothing about
-            # the new one — so the caller has to supply one (or be switching back
-            # to the order's currency, where _resolve_exchange_rate settles on 1).
+            # the new one — so it is dropped unless the caller supplies a new one
+            # (switching back to the order's currency settles on 1).
             new_rate = None
         else:
             new_rate = product.exchange_rate

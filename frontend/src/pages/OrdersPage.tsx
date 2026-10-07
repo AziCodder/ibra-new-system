@@ -15,6 +15,7 @@ import {
   type OrderStatus,
 } from '../api/orders'
 import { fetchClients } from '../api/clients'
+import { fetchStaff } from '../api/users'
 import CreateOrderModal from '../components/CreateOrderModal'
 import { useAuth } from '../contexts/AuthContext'
 import { SkeletonCardGrid } from '../components/Skeleton'
@@ -114,6 +115,22 @@ const STATUS_BADGE: Record<OrderStatus, { label: string; color: TagColor }> = {
   cancelled: { label: 'Отменён', color: 'red' },
 }
 
+type CalculatedFilter = 'all' | 'calculated' | 'not_calculated'
+
+const CALCULATED_OPTIONS: { value: CalculatedFilter; label: string }[] = [
+  { value: 'all', label: 'Расчёт: все' },
+  { value: 'calculated', label: 'Рассчитанные' },
+  { value: 'not_calculated', label: 'Не рассчитанные' },
+]
+
+const selectStyle: CSSProperties = {
+  height: 32,
+  background: 'var(--color-surface)',
+  border: '1px solid var(--color-border)',
+  borderRadius: 'var(--radius)',
+  color: 'var(--color-text)',
+}
+
 function SegmentedFilter({
   options,
   value,
@@ -163,6 +180,14 @@ function PaymentProgress({ order }: { order: Order }) {
   const progress = requested > 0 ? Math.min(100, (paid / requested) * 100) : 0
 
   if (paid >= requested) {
+    // Every invoice is settled, yet a product may never have been invoiced at all.
+    if (order.unpaid_products > 0) {
+      return (
+        <div className="text-xs font-medium" style={{ color: 'var(--color-warning)' }}>
+          Счета оплачены · товаров без оплаты: {order.unpaid_products}
+        </div>
+      )
+    }
     return <div className="text-xs font-medium" style={{ color: 'var(--color-success)' }}>Оплачено полностью</div>
   }
 
@@ -174,7 +199,9 @@ function PaymentProgress({ order }: { order: Order }) {
         <div style={{ width: `${progress}%`, height: '100%', background: 'var(--color-primary)' }} />
       </div>
       <div className="text-xs" style={{ color: 'var(--color-muted)' }}>
-        Оплачено {Math.round(progress)}% · остаток {remaining} {order.currency}
+        Оплачено {Math.round(progress)}%
+        {/* Amounts are in the requests' currency; with requests in several currencies the remainder has no single unit. */}
+        {order.payment_currency && ` · остаток ${remaining} ${order.payment_currency}`}
       </div>
     </div>
   )
@@ -195,7 +222,10 @@ function OrderCard({ order }: { order: Order }) {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-base font-extrabold truncate" style={{ color: 'var(--color-primary)' }}>{order.number}</span>
-        <Tag color={badge.color}>{badge.label}</Tag>
+        <span className="flex items-center gap-1.5 flex-shrink-0">
+          {order.is_calculated && <Tag color="green">Рассчитан</Tag>}
+          <Tag color={badge.color}>{badge.label}</Tag>
+        </span>
       </div>
       <div className="text-sm font-bold line-clamp-2" style={{ color: 'var(--color-text)' }}>{order.client_name}</div>
       <div className="flex items-center gap-2 text-xs flex-wrap" style={{ color: 'var(--color-muted)' }}>
@@ -263,8 +293,10 @@ function SortableOrderCard({ order }: { order: Order }) {
 }
 
 export default function OrdersPage() {
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('in_progress')
   const [clientId, setClientId] = useState<number | undefined>(undefined)
+  const [managerId, setManagerId] = useState<number | undefined>(undefined)
+  const [calculatedFilter, setCalculatedFilter] = useState<CalculatedFilter>('all')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [showCreate, setShowCreate] = useState(false)
@@ -272,12 +304,15 @@ export default function OrdersPage() {
   const pageSize = 12
   const { user } = useAuth()
   const canCreate = user?.role !== 'observer'
+  // A manager only ever sees their own orders, so the worker filter is for those who see everyone's.
+  const canFilterByManager = user?.role === 'admin' || user?.role === 'observer'
   const queryClient = useQueryClient()
   const showToast = useToast()
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: fetchClients })
+  const { data: staff } = useQuery({ queryKey: ['users', 'staff'], queryFn: fetchStaff, enabled: canFilterByManager })
 
-  const queryKey = ['orders', statusFilter, clientId, search, page, sort.sortBy, sort.sortOrder]
+  const queryKey = ['orders', statusFilter, clientId, managerId, calculatedFilter, search, page, sort.sortBy, sort.sortOrder]
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey,
@@ -285,6 +320,8 @@ export default function OrdersPage() {
       fetchOrders({
         status: statusFilter === 'all' ? undefined : statusFilter,
         client_id: clientId,
+        manager_id: canFilterByManager ? managerId : undefined,
+        is_calculated: calculatedFilter === 'all' ? undefined : calculatedFilter === 'calculated',
         search: search || undefined,
         sort_by: sort.sortBy,
         sort_order: sort.sortOrder,
@@ -366,12 +403,43 @@ export default function OrdersPage() {
         <select
           value={clientId ?? ''}
           onChange={(e) => { setClientId(e.target.value ? Number(e.target.value) : undefined); setPage(1) }}
+          aria-label="Фильтр по клиенту"
           className="text-sm outline-none px-3 w-full sm:w-auto"
-          style={{ height: 32, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', color: 'var(--color-text)' }}
+          style={selectStyle}
         >
           <option value="">Клиент: все</option>
           {clients?.map((c) => (
             <option key={c.id} value={c.id}>{c.code} — {c.full_name}</option>
+          ))}
+        </select>
+
+        {canFilterByManager && (
+          <select
+            value={managerId ?? ''}
+            onChange={(e) => { setManagerId(e.target.value ? Number(e.target.value) : undefined); setPage(1) }}
+            aria-label="Фильтр по работнику"
+            className="text-sm outline-none px-3 w-full sm:w-auto"
+            style={selectStyle}
+          >
+            <option value="">Работник: все</option>
+            {staff?.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.full_name || u.login}
+                {u.is_active ? '' : ' (неактивен)'}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <select
+          value={calculatedFilter}
+          onChange={(e) => { setCalculatedFilter(e.target.value as CalculatedFilter); setPage(1) }}
+          aria-label="Фильтр по расчёту"
+          className="text-sm outline-none px-3 w-full sm:w-auto"
+          style={selectStyle}
+        >
+          {CALCULATED_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
         </select>
 
@@ -380,7 +448,7 @@ export default function OrdersPage() {
           onChange={(e) => selectSort(e.target.value)}
           aria-label="Сортировка заказов"
           className="text-sm outline-none px-3 w-full sm:w-auto"
-          style={{ height: 32, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius)', color: 'var(--color-text)' }}
+          style={selectStyle}
         >
           {SORT_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>

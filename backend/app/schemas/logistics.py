@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.core.currency import Currency, CurrencyIn
 from app.models.logistics import LogisticsStatus
+from app.models.order import OrderStatus
 
 
 def _strip_tracking(value: str | None) -> str | None:
@@ -98,6 +99,7 @@ class LogisticsOut(BaseModel):
 
 class LogisticsSummaryOut(LogisticsOut):
     order_number: str
+    order_status: OrderStatus
     order_currency: Currency
     client_name: str
     manager_name: str

@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import html
 import logging
 
 from aiogram import Bot, Dispatcher, F
@@ -78,8 +79,8 @@ def _get_dispatcher() -> Dispatcher:
             if linked_client is not None:
                 await message.answer(
                     "✅ Этот чат уже привязан.\n\n"
-                    f"<b>Код:</b> {linked_client.code}\n"
-                    f"<b>ФИО:</b> {linked_client.full_name}",
+                    f"<b>Код:</b> {html.escape(linked_client.code)}\n"
+                    f"<b>ФИО:</b> {html.escape(linked_client.full_name)}",
                     parse_mode="HTML",
                 )
                 return
@@ -124,7 +125,7 @@ def _get_dispatcher() -> Dispatcher:
             client_name = client.full_name
 
         await message.answer(
-            f"✅ Чат успешно привязан к клиенту <b>{client_name}</b>! "
+            f"✅ Чат успешно привязан к клиенту <b>{html.escape(client_name)}</b>! "
             "Теперь вы будете получать уведомления здесь.",
             parse_mode="HTML",
         )

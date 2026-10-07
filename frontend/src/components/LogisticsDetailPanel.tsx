@@ -56,16 +56,22 @@ export default function LogisticsDetailPanel({
   orderNumber,
   logistics,
   canEdit,
+  canNotify,
   isAdmin,
   orderCurrency,
+  readOnly = false,
   onClose,
 }: {
   orderId: number
   orderNumber: string
   logistics: Logistics
   canEdit: boolean
+  /** Sending the receipt notice changes no order data, so it outlives the edit lock. */
+  canNotify: boolean
   isAdmin: boolean
   orderCurrency: string
+  /** The order is frozen — not even comments may be added. */
+  readOnly?: boolean
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
@@ -242,8 +248,8 @@ export default function LogisticsDetailPanel({
 
   const canEditButton = canEdit && (isAdmin || logistics.status === 'in_transit')
   const canDeleteButton = canEdit && logistics.status === 'in_transit'
-  const canAccept = isAdmin && logistics.status === 'in_transit'
-  const canUnaccept = isAdmin && logistics.status === 'accepted'
+  const canAccept = canEdit && isAdmin && logistics.status === 'in_transit'
+  const canUnaccept = canEdit && isAdmin && logistics.status === 'accepted'
 
   return (
     <div className="fixed inset-0 z-50" onClick={onClose}>
@@ -449,16 +455,18 @@ export default function LogisticsDetailPanel({
           </div>
         )}
 
-        {canEdit && (
+        {(canNotify || canAccept || canUnaccept) && (
           <div className="flex gap-2 mb-4 flex-wrap">
-            <button
-              onClick={handleNotify}
-              disabled={notifyMutation.isPending}
-              className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50"
-              style={{ background: 'var(--color-surface-3)', color: 'var(--color-text)' }}
-            >
-              {notifyMutation.isPending ? 'Отправка...' : notifyMutation.isSuccess ? 'Уведомление отправлено ✓' : 'Уведомить о получении'}
-            </button>
+            {canNotify && (
+              <button
+                onClick={handleNotify}
+                disabled={notifyMutation.isPending}
+                className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ background: 'var(--color-surface-3)', color: 'var(--color-text)' }}
+              >
+                {notifyMutation.isPending ? 'Отправка...' : notifyMutation.isSuccess ? 'Уведомление отправлено ✓' : 'Уведомить о получении'}
+              </button>
+            )}
             {canAccept && !isAccepting && (
               <button
                 onClick={() => setIsAccepting(true)}
@@ -624,24 +632,26 @@ export default function LogisticsDetailPanel({
               ))}
             </ul>
           )}
-          <div className="flex gap-2 mt-3">
-            <input
-              type="text"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Добавить комментарий..."
-              className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
-              style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-            />
-            <button
-              onClick={() => commentMutation.mutate()}
-              disabled={commentText.trim() === '' || commentMutation.isPending}
-              className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50"
-              style={{ background: 'var(--color-primary)', color: '#fff' }}
-            >
-              Отправить
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="flex gap-2 mt-3">
+              <input
+                type="text"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Добавить комментарий..."
+                className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
+                style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+              />
+              <button
+                onClick={() => commentMutation.mutate()}
+                disabled={commentText.trim() === '' || commentMutation.isPending}
+                className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ background: 'var(--color-primary)', color: '#fff' }}
+              >
+                Отправить
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

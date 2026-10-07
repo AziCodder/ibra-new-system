@@ -20,6 +20,24 @@ async def list_users(
     return result.scalars().all()
 
 
+@router.get("/staff", response_model=list[UserOut])
+async def list_staff(
+    _user: User = require_role(UserRole.admin, UserRole.observer),
+    session: AsyncSession = Depends(get_session),
+):
+    """Admins and managers — who orders are assigned to and who shares in a calculation.
+
+    Open to observers as well as admins: both see every order and filter the list by
+    who runs it. A manager only ever sees their own orders, so has no use for it.
+    """
+    result = await session.execute(
+        select(User)
+        .where(User.role.in_((UserRole.admin, UserRole.manager)))
+        .order_by(User.full_name, User.id)
+    )
+    return result.scalars().all()
+
+
 @router.post("/", response_model=UserOut, status_code=201)
 async def create_user(
     body: UserCreate,

@@ -52,6 +52,14 @@ class OrderOut(BaseModel):
     # None = no payment request created yet for this order ("ждёт счёт")
     requested_amount: Decimal | None = None
     paid_amount: Decimal | None = None
+    # Currency of the two amounts above (that of the requests, not the order's);
+    # None when the requests are in different currencies.
+    payment_currency: str | None = None
+    # Products whose cost no payment covers yet — including ones never invoiced,
+    # which requested/paid above can't see.
+    unpaid_products: int = 0
+    is_calculated: bool = False
+    calculated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

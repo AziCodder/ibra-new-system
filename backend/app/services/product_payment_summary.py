@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -5,17 +6,69 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.payment import Payment
 from app.models.payment_request import PaymentRequestItem
+from app.models.product import Product
+
+# Requests and payments are kept to the cent, while quantity * price can carry a
+# fraction of one (2.5 kg at 10.01 = 25.025) — no payment could ever cover that.
+PAID_TOLERANCE = Decimal("0.01")
+
+
+@dataclass(frozen=True)
+class UnpaidProduct:
+    order_id: int
+    name: str
+    currency: str
+    cost: Decimal
+    paid: Decimal
+
+    @property
+    def missing(self) -> Decimal:
+        return self.cost - self.paid
+
+
+async def get_unpaid_products(session: AsyncSession, order_ids: list[int]) -> list[UnpaidProduct]:
+    """Products of these orders whose cost isn't covered by payments, in their own currency.
+
+    A product nobody ever raised a payment request for has no PaymentRequestItem
+    row, so get_products_payment_totals omits it — and that omission means "not
+    paid": exactly the forgotten payment this exists to catch (правки 2026-10-01 п.1).
+    """
+    if not order_ids:
+        return []
+
+    products = (
+        await session.execute(
+            select(Product.id, Product.order_id, Product.name, Product.currency, Product.quantity, Product.price)
+            .where(Product.order_id.in_(order_ids))
+            .order_by(Product.id)
+        )
+    ).all()
+    totals = await get_products_payment_totals(session, [p.id for p in products])
+
+    unpaid = []
+    for product in products:
+        _, paid = totals.get(product.id, (Decimal("0"), Decimal("0")))
+        cost = product.quantity * product.price
+        if cost - paid >= PAID_TOLERANCE:
+            unpaid.append(UnpaidProduct(product.order_id, product.name, product.currency, cost, paid))
+    return unpaid
 
 
 async def get_products_payment_totals(
     session: AsyncSession, product_ids: list[int]
 ) -> dict[int, tuple[Decimal, Decimal]]:
-    """Requested (exact) and paid (prorated) totals per product.
+    """Requested (exact) and paid (prorated) totals per product, in the product's currency.
 
     "Requested" is the exact sum of PaymentRequestItem.amount for the product.
     "Paid" has no direct per-product link — a payment settles a whole payment
     request, which can span multiple products — so it's prorated per request:
     paid_share = request_paid_total * (item_amount / request_total_amount).
+
+    Both sides stay in the request's currency, which is the product's. A payment
+    is made in its request's currency; `Payment.exchange_rate` is quoted towards
+    the order's currency and feeds only the profit (see get_payment_request_paid).
+    Multiplying it in would report a 5 400 CNY product paid at 13.4 as 72 360 paid.
+
     A product with no payment-request items at all is omitted from the result
     (mirrors order_payment_summary.get_orders_payment_totals's convention).
     """
@@ -54,7 +107,7 @@ async def get_products_payment_totals(
     request_paid_by_id = dict(
         (
             await session.execute(
-                select(Payment.payment_request_id, func.sum(Payment.amount * Payment.exchange_rate))
+                select(Payment.payment_request_id, func.sum(Payment.amount))
                 .where(Payment.payment_request_id.in_(request_ids))
                 .group_by(Payment.payment_request_id)
             )

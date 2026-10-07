@@ -13,6 +13,7 @@ from app.models.payment_request import PaymentRequest
 from app.models.product import Product
 from app.models.user import User, UserRole
 from app.routers.auth import get_current_user
+from app.services.order_access import ensure_not_calculated
 from app.services.storage import CONTEXT_MAX_SIZES, MAX_FILE_SIZE, StorageError, storage
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -100,10 +101,11 @@ async def delete_file(
 
     order_id = await _find_file_order_id(file_key, session)
     if order_id is not None:
-        if user.role == UserRole.manager:
-            order = (await session.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
-            if order is None or order.manager_id != user.id:
-                raise HTTPException(status_code=404, detail="File not found")
+        order = (await session.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
+        if user.role == UserRole.manager and (order is None or order.manager_id != user.id):
+            raise HTTPException(status_code=404, detail="File not found")
+        if order is not None:
+            ensure_not_calculated(order)
     elif user.role != UserRole.admin:
         # File isn't attached to anything we can check ownership against (e.g. a freshly
         # uploaded, not-yet-attached file) — only admins may delete blind.

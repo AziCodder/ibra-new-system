@@ -1,3 +1,5 @@
+import type { OrderStatus } from './orders'
+
 export type LogisticsStatus = 'in_transit' | 'accepted' | 'cancelled'
 
 export interface LogisticsItem {
@@ -77,6 +79,7 @@ async function handle<T>(res: Response, fallback: string): Promise<T> {
 
 export interface LogisticsSummary extends Logistics {
   order_number: string
+  order_status: OrderStatus
   order_currency: string
   client_name: string
   manager_name: string

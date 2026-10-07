@@ -28,6 +28,7 @@ from app.services.logistics_notifications import notify_shipment_sent
 from app.services.logistics_validation import LogisticsValidationError, validate_logistics_items
 from app.services.notification_templates import shipment_arrived_message
 from app.services.notifications import notify
+from app.services.order_access import ensure_not_calculated
 from app.services.order_access import get_order_for_read as _get_order_for_read
 from app.services.order_access import get_order_for_write as _get_order_for_write
 from app.services.telegram_groups import get_client_send_targets
@@ -371,8 +372,10 @@ async def create_logistics_comment(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Comments are addable by every role on any status — observer included, per ТЗ §9."""
-    await _get_order_for_read(order_id, user, session)
+    """Comments are addable by every role on any status — observer included, per ТЗ §9 —
+    until the order is calculated."""
+    order = await _get_order_for_read(order_id, user, session)
+    ensure_not_calculated(order)
     await _get_logistics_or_404(order_id, logistics_id, session)
 
     comment = LogisticsComment(logistics_id=logistics_id, author_id=user.id, text=body.text)

@@ -5,7 +5,7 @@ import ErrorState from './ErrorState'
 import Skeleton from './Skeleton'
 import { useAuth } from '../contexts/AuthContext'
 
-export default function NotesSection({ orderId }: { orderId: number }) {
+export default function NotesSection({ orderId, readOnly = false }: { orderId: number; readOnly?: boolean }) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const [text, setText] = useState('')
@@ -84,24 +84,26 @@ export default function NotesSection({ orderId }: { orderId: number }) {
         ))}
       </div>
 
-      <div className="flex gap-2">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={2}
-          placeholder="Добавить заметку..."
-          className="flex-1 rounded-lg px-3 py-2.5 text-sm outline-none resize-none"
-          style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
-        />
-        <button
-          onClick={() => mutation.mutate(text.trim())}
-          disabled={!text.trim() || mutation.isPending}
-          className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50 self-end"
-          style={{ background: 'var(--color-primary)', color: '#fff' }}
-        >
-          {mutation.isPending ? 'Сохранение...' : 'Добавить'}
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="flex gap-2">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={2}
+            placeholder="Добавить заметку..."
+            className="flex-1 rounded-lg px-3 py-2.5 text-sm outline-none resize-none"
+            style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }}
+          />
+          <button
+            onClick={() => mutation.mutate(text.trim())}
+            disabled={!text.trim() || mutation.isPending}
+            className="rounded-lg px-4 py-2 text-sm font-medium cursor-pointer disabled:opacity-50 self-end"
+            style={{ background: 'var(--color-primary)', color: '#fff' }}
+          >
+            {mutation.isPending ? 'Сохранение...' : 'Добавить'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
