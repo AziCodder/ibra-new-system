@@ -21,12 +21,9 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
 
   const selectedProduct = products?.find((p) => p.id === selectedProductId) ?? null
 
+  // Products may be priced in different currencies, so totals are per currency —
+  // nothing is converted into the order's currency (правки 2026-10-08).
   const totalsByCurrency = new Map<string, { quantity: number; sum: number }>()
-  // Products may be priced in different currencies; a foreign one converts at its
-  // own rate ("1 CNY = 11.5 RUB" -> 11.5, so multiply). The rate is optional, so
-  // the grand total exists only while every foreign product has one.
-  let grandTotalInOrderCurrency = 0
-  let allConvertible = true
   for (const product of products ?? []) {
     const quantity = Number(product.quantity)
     const sum = quantity * Number(product.price)
@@ -35,15 +32,7 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
       quantity: existing.quantity + quantity,
       sum: existing.sum + sum,
     })
-    if (product.currency === orderCurrency) {
-      grandTotalInOrderCurrency += sum
-    } else if (Number(product.exchange_rate) > 0) {
-      grandTotalInOrderCurrency += sum * Number(product.exchange_rate)
-    } else {
-      allConvertible = false
-    }
   }
-  const hasForeignCurrency = [...totalsByCurrency.keys()].some((c) => c !== orderCurrency)
 
   return (
     <div>
@@ -143,18 +132,6 @@ export default function ProductsTable({ orderId, orderCurrency, canEdit }: { ord
                   </td>
                 </tr>
               ))}
-              {hasForeignCurrency && allConvertible && (
-                <tr style={{ borderTop: '1px solid var(--color-border)', background: 'var(--color-surface-2)' }}>
-                  <td className="px-4 py-2.5 font-semibold" style={{ color: 'var(--color-text)' }}>
-                    Всего в валюте заказа
-                  </td>
-                  <td className="px-4 py-2.5" />
-                  <td className="px-4 py-2.5" />
-                  <td className="px-4 py-2.5 text-right font-semibold" data-label="Сумма" style={{ color: 'var(--color-text)', fontVariantNumeric: 'tabular-nums' }}>
-                    {formatNumber(grandTotalInOrderCurrency)} {orderCurrency}
-                  </td>
-                </tr>
-              )}
             </tfoot>
           </table>
         </div>

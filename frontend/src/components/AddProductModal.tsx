@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createProduct } from '../api/products'
 import { fetchSuppliers } from '../api/suppliers'
 import FileUploader, { type UploadedFile } from './FileUploader'
-import { CurrencySelect } from './CurrencyRateFields'
+import CurrencySelect from './CurrencySelect'
 
 export default function AddProductModal({ orderId, orderCurrency, onClose }: { orderId: number; orderCurrency: string; onClose: () => void }) {
   const queryClient = useQueryClient()

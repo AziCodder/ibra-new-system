@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { updateProduct, deleteProduct, type Product } from '../api/products'
 import { fetchSuppliers } from '../api/suppliers'
 import type { LogisticsStatus } from '../api/logistics'
-import CurrencyRateFields from './CurrencyRateFields'
+import CurrencySelect from './CurrencySelect'
 import FileUploader, { isImageKey, type UploadedFile } from './FileUploader'
 import Tag, { type TagColor } from './Tag'
 
@@ -55,7 +55,6 @@ export default function ProductDetailPanel({
   const [quantity, setQuantity] = useState(product.quantity)
   const [price, setPrice] = useState(product.price)
   const [currency, setCurrency] = useState(product.currency)
-  const [exchangeRate, setExchangeRate] = useState(product.exchange_rate ?? '')
   const [photo, setPhoto] = useState<UploadedFile | null>(
     product.photo_key ? { key: product.photo_key, filename: product.photo_key, size: 0 } : null
   )
@@ -71,7 +70,6 @@ export default function ProductDetailPanel({
         quantity: Number(quantity),
         price: Number(price),
         currency,
-        exchange_rate: currency === orderCurrency ? 1 : Number(exchangeRate) > 0 ? Number(exchangeRate) : null,
         photo_key: photo?.key ?? null,
       }),
     onSuccess: () => {
@@ -102,8 +100,6 @@ export default function ProductDetailPanel({
   const shippedNum = Number(product.shipped_quantity ?? 0)
   const acceptedNum = Number(product.accepted_quantity ?? 0)
   const shipments = product.shipments ?? []
-  const rateNum = Number(product.exchange_rate)
-  const isForeignCurrency = product.currency !== orderCurrency
   const canSave =
     supplierId !== '' &&
     name.trim() !== '' &&
@@ -182,15 +178,6 @@ export default function ProductDetailPanel({
               <SummaryRow label="Количество" value={formatNumber(quantityNum)} />
               <SummaryRow label="Цена" value={`${formatNumber(priceNum)} ${product.currency}`} />
               <SummaryRow label="Итого" value={`${formatNumber(total)} ${product.currency}`} />
-              {isForeignCurrency && rateNum > 0 && (
-                <>
-                  <SummaryRow label="Курс" value={`1 ${product.currency} = ${rateNum} ${orderCurrency}`} />
-                  <SummaryRow
-                    label={`Итого в ${orderCurrency}`}
-                    value={`${formatNumber(total * rateNum)} ${orderCurrency}`}
-                  />
-                </>
-              )}
             </div>
 
             <div className="rounded-[8px] p-4 mb-4" style={{ background: 'var(--color-surface-2)' }}>
@@ -307,14 +294,7 @@ export default function ProductDetailPanel({
               </label>
             </div>
 
-            <CurrencyRateFields
-              orderCurrency={orderCurrency}
-              currency={currency}
-              onCurrencyChange={setCurrency}
-              exchangeRate={exchangeRate}
-              onExchangeRateChange={setExchangeRate}
-              amount={Number(quantity) * Number(price)}
-            />
+            <CurrencySelect orderCurrency={orderCurrency} currency={currency} onChange={setCurrency} />
 
             <label className="block mb-4">
               <span className="block text-sm mb-1.5" style={{ color: 'var(--color-muted)' }}>Поставщик</span>
